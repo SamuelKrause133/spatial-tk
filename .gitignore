@@ -180,6 +180,7 @@ plots/
 # Test data (keep structure, ignore large files)
 tests/test_data/*.zarr
 tests/test_data/subsampled_*.zarr
+tests/test_data/*.oir
 
 # Log files
 *.log

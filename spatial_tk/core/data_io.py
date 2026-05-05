@@ -16,9 +16,6 @@ import numpy as np
 import pandas as pd
 import spatialdata as sd
 
-# Try to import spatialdata_io for Xenium loading
-from spatialdata_io import xenium as xenium_io
-
 def load_sample_metadata(csv_path: str) -> pd.DataFrame:
     """
     Load sample metadata from CSV file.
@@ -76,6 +73,9 @@ def load_xenium_dataset(dataset_path: Path, sample_name: str) -> sd.SpatialData:
     logging.info(f"    Loading raw Xenium dataset from {dataset_path}")
     
     try:
+        # Lazy import: spatialdata_io is not required for non-Xenium / image-only workflows
+        from spatialdata_io import xenium as xenium_io
+
         # Use spatialdata_io.xenium() to load the dataset
         sdata = xenium_io(dataset_path)
         

@@ -2,8 +2,8 @@
 """
 Main CLI entry point for spatial-tk.
 
-This module provides the command-line interface for the Xenium spatial
-transcriptomics processing pipeline.
+Analysis subcommands are registered with lazy imports so optional image / JVM
+stacks are never loaded unless ``spatial-tk image ...`` is used.
 """
 
 import argparse
@@ -11,31 +11,22 @@ import sys
 import warnings
 
 # Suppress warnings
-warnings.filterwarnings('ignore', category=FutureWarning)
-
-from spatial_tk.commands import (
-    concat,
-    normalize,
-    cluster,
-    quantitate,
-    spatial_neighbors,
-    spatial_cluster,
-    assign,
-    differential,
-)
-from spatial_tk.utils.helpers import setup_logging
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 def create_parser() -> argparse.ArgumentParser:
     """
-    Create the main argument parser with all subcommands.
-    
+    Create the analysis-only argument parser (concat, normalize, cluster, ...).
+
+    Command modules are imported only while building this parser — not at
+    ``import spatial_tk.cli`` time.
+
     Returns:
         Configured ArgumentParser
     """
     parser = argparse.ArgumentParser(
-        prog='spatial-tk',
-        description='Xenium Spatial Transcriptomics Processing Pipeline',
+        prog="spatial-tk",
+        description="Xenium Spatial Transcriptomics Processing Pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -81,115 +72,171 @@ Examples:
   spatial-tk assign --input step4_scored.zarr --output step5_annotated.zarr \\
       --score-key score_mlm_custom
   spatial-tk differential --input step5_annotated.zarr --output-dir results/
-        """
+
+Image / microscopy (optional deps — separate environment):
+  spatial-tk image --help
+        """,
     )
-    
-    # Create subparsers
+
     subparsers = parser.add_subparsers(
-        dest='command',
-        help='Available commands',
-        required=True
+        dest="command",
+        help="Available commands",
+        required=True,
     )
-    
-    # Add concat subcommand
+
+    _register_concat(subparsers)
+    _register_normalize(subparsers)
+    _register_cluster(subparsers)
+    _register_quantitate(subparsers)
+    _register_spatial_neighbors(subparsers)
+    _register_spatial_cluster(subparsers)
+    _register_assign(subparsers)
+    _register_differential(subparsers)
+
+    return parser
+
+
+def _register_concat(subparsers: argparse._SubParsersAction) -> None:
+    from spatial_tk.commands import concat
+
     concat_parser = subparsers.add_parser(
-        'concat',
-        help='Concatenate multiple Xenium .zarr files',
-        description='Join multiple Xenium spatial datasets into a single .zarr file'
+        "concat",
+        help="Concatenate multiple Xenium .zarr files",
+        description="Join multiple Xenium spatial datasets into a single .zarr file",
     )
     concat.add_arguments(concat_parser)
     concat_parser.set_defaults(func=concat.main)
-    
-    # Add normalize subcommand
+
+
+def _register_normalize(subparsers: argparse._SubParsersAction) -> None:
+    from spatial_tk.commands import normalize
+
     normalize_parser = subparsers.add_parser(
-        'normalize',
-        help='Normalize and preprocess data',
-        description='Perform QC, filtering, normalization, and feature selection'
+        "normalize",
+        help="Normalize and preprocess data",
+        description="Perform QC, filtering, normalization, and feature selection",
     )
     normalize.add_arguments(normalize_parser)
     normalize_parser.set_defaults(func=normalize.main)
-    
-    # Add cluster subcommand
+
+
+def _register_cluster(subparsers: argparse._SubParsersAction) -> None:
+    from spatial_tk.commands import cluster
+
     cluster_parser = subparsers.add_parser(
-        'cluster',
-        help='Perform clustering analysis',
-        description='Run PCA, compute neighbors, UMAP, and Leiden clustering'
+        "cluster",
+        help="Perform clustering analysis",
+        description="Run PCA, compute neighbors, UMAP, and Leiden clustering",
     )
     cluster.add_arguments(cluster_parser)
     cluster_parser.set_defaults(func=cluster.main)
-    
-    # Add quantitate subcommand
+
+
+def _register_quantitate(subparsers: argparse._SubParsersAction) -> None:
+    from spatial_tk.commands import quantitate
+
     quantitate_parser = subparsers.add_parser(
-        'quantitate',
-        help='Run enrichment scoring (MLM/ULM) on a gene list or built-in resources',
+        "quantitate",
+        help="Run enrichment scoring (MLM/ULM) on a gene list or built-in resources",
         description=(
-            'Run MLM or ULM enrichment scoring using a custom marker gene list, '
-            'decoupler built-in resources (panglao, hallmark, collectri, dorothea, progeny), '
-            'or both. Supports optional cell filtering via --filter-obs.'
+            "Run MLM or ULM enrichment scoring using a custom marker gene list, "
+            "decoupler built-in resources (panglao, hallmark, collectri, dorothea, progeny), "
+            "or both. Supports optional cell filtering via --filter-obs."
         ),
     )
     quantitate.add_arguments(quantitate_parser)
     quantitate_parser.set_defaults(func=quantitate.main)
 
-    # Add spatial_neighbors subcommand
+
+def _register_spatial_neighbors(subparsers: argparse._SubParsersAction) -> None:
+    from spatial_tk.commands import spatial_neighbors
+
     spatial_neighbors_parser = subparsers.add_parser(
-        'spatial_neighbors',
-        help='Compute spatial neighbor graph with Squidpy',
+        "spatial_neighbors",
+        help="Compute spatial neighbor graph with Squidpy",
         description=(
-            'Build spatial connectivities/distances with squidpy.gr.spatial_neighbors '
-            'using configurable spatial key, neighbor definition, and transform.'
+            "Build spatial connectivities/distances with squidpy.gr.spatial_neighbors "
+            "using configurable spatial key, neighbor definition, and transform."
         ),
     )
     spatial_neighbors.add_arguments(spatial_neighbors_parser)
     spatial_neighbors_parser.set_defaults(func=spatial_neighbors.main)
 
-    # Add spatial_cluster subcommand
+
+def _register_spatial_cluster(subparsers: argparse._SubParsersAction) -> None:
+    from spatial_tk.commands import spatial_cluster
+
     spatial_cluster_parser = subparsers.add_parser(
-        'spatial_cluster',
-        help='Cluster spatial neighborhood composition profiles',
+        "spatial_cluster",
+        help="Cluster spatial neighborhood composition profiles",
         description=(
-            'Build neighborhood composition vectors from spatial graph connectivity and '
-            'cell-type labels, then run k-means over a cluster-count sweep with silhouette scoring.'
+            "Build neighborhood composition vectors from spatial graph connectivity and "
+            "cell-type labels, then run k-means over a cluster-count sweep with silhouette scoring."
         ),
     )
     spatial_cluster.add_arguments(spatial_cluster_parser)
     spatial_cluster_parser.set_defaults(func=spatial_cluster.main)
 
-    # Add assign subcommand
+
+def _register_assign(subparsers: argparse._SubParsersAction) -> None:
+    from spatial_tk.commands import assign
+
     assign_parser = subparsers.add_parser(
-        'assign',
-        help='Assign cell type labels to clusters from enrichment scores',
+        "assign",
+        help="Assign cell type labels to clusters from enrichment scores",
         description=(
-            'Read an enrichment score matrix from obsm (produced by quantitate) '
-            'and assign a cell type label to each cluster using a configurable strategy. '
-            'Optionally runs per-cluster differential expression.'
+            "Read an enrichment score matrix from obsm (produced by quantitate) "
+            "and assign a cell type label to each cluster using a configurable strategy. "
+            "Optionally runs per-cluster differential expression."
         ),
     )
     assign.add_arguments(assign_parser)
     assign_parser.set_defaults(func=assign.main)
 
-    # Add differential subcommand
+
+def _register_differential(subparsers: argparse._SubParsersAction) -> None:
+    from spatial_tk.commands import differential
+
     differential_parser = subparsers.add_parser(
-        'differential',
-        help='Differential expression analysis',
-        description='Perform differential analysis between groups or find cluster markers'
+        "differential",
+        help="Differential expression analysis",
+        description="Perform differential analysis between groups or find cluster markers",
     )
     differential.add_arguments(differential_parser)
     differential_parser.set_defaults(func=differential.main)
-    
-    return parser
 
 
-def main():
-    """Main entry point for the CLI."""
-    # Setup logging
+def image_main() -> None:
+    """Handle ``spatial-tk image ...`` after argv has been rewritten."""
+    from spatial_tk.utils.helpers import setup_logging
+    from spatial_tk.commands import image_group
+
     setup_logging()
-    
-    # Parse arguments
+    try:
+        image_group.image_main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def main() -> None:
+    """Main entry point for the CLI."""
+    argv = sys.argv[1:]
+    if argv and argv[0] == "image":
+        # Strip the namespace so image argparse sees subcommand first
+        sys.argv = [sys.argv[0]] + argv[1:]
+        image_main()
+        return
+
+    from spatial_tk.utils.helpers import setup_logging
+
+    setup_logging()
+
     parser = create_parser()
     args = parser.parse_args()
-    
-    # Execute the appropriate command
+
     try:
         args.func(args)
     except Exception as e:
@@ -199,4 +246,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
