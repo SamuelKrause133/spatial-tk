@@ -1,4 +1,9 @@
-.PHONY: help venv install install-dev build test test-unit test-functional test-coverage clean clean-all lint format create-test-data run
+.PHONY: help venv venv-image venv-analysis install install-dev build test test-unit test-functional test-coverage test-unit-image test-unit-analysis test-all-envs clean clean-all lint format create-test-data run
+
+# Dual conda envs (optional; see image.env.yaml / analysis.env.yaml)
+VENV_IMAGE_PY := ./venv_image/bin/python
+VENV_ANALYSIS_PY := ./venv_analysis/bin/python
+VENV_IMAGE_JAVA_HOME := $(CURDIR)/venv_image/lib/jvm
 
 # Default target
 help:
@@ -6,11 +11,18 @@ help:
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make venv              - Create virtual environment with conda"
+	@echo "  make venv-image        - Like main's venv: conda (py3.10+JDK) then pip deps from requirements-image.txt"
+	@echo "  make venv-analysis     - Like main's venv: conda py3.12 then pip deps from requirements-analysis.txt"
 	@echo "  make install           - Install package in current environment"
 	@echo "  make install-dev       - Install package with dev dependencies"
 	@echo "  make build             - Build distribution packages"
 	@echo "  make test              - Run all tests using full external datasets"
-	@echo "  make test-unit         - Run only unit tests (fast)"
+	@echo "  make test-unit         - Run only unit tests (fast, current python)"
+	@echo "  make test-unit-analysis - Unit tests using ./venv_analysis"
+	@echo "  make test-unit-image    - Image/bridge unit tests using ./venv_image"
+	@echo "  make test-all-envs      - Run test-unit-analysis then test-unit-image"
+	@echo "  make check-env-analysis - Print versions + validate imports (./venv_analysis)"
+	@echo "  make check-env-image    - Print versions + validate imports (./venv_image)"
 	@echo "  make test-functional   - Run functional tests with ROI fixtures"
 	@echo "  make test-coverage     - Run tests with coverage report"
 	@echo "  make create-test-data  - Generate subsampled test data"
@@ -25,7 +37,30 @@ help:
 venv:
 	conda create -p ./venv python=3.12 -y
 	./venv/bin/pip install --upgrade pip
-	./venv/bin/pip install -e ".[dev]"
+	./venv/bin/pip install -e ".[analysis,dev]"
+
+# Microscopy / JVM / Cellpose (same workflow as main: minimal conda + pip; avoids conda-forge YAML brittleness)
+# After install: set JAVA_HOME to the JDK inside the prefix (javabridge needs javac + runtime), e.g.
+#   export JAVA_HOME=$(pwd)/venv_image/lib/jvm
+#   export PATH="$$JAVA_HOME/bin:$$PATH"
+venv-image:
+	conda create -p ./venv_image python=3.10 openjdk=17 pip setuptools wheel -y
+	$(VENV_IMAGE_PY) -m pip install --upgrade pip wheel packaging "setuptools<81"
+	$(VENV_IMAGE_PY) -m pip install numpy==1.26.4 scipy==1.11.4
+	JAVA_HOME=$(VENV_IMAGE_JAVA_HOME) PATH="$(VENV_IMAGE_JAVA_HOME)/bin:$$PATH" $(VENV_IMAGE_PY) -m pip install --no-build-isolation python-javabridge==4.0.3
+	JAVA_HOME=$(VENV_IMAGE_JAVA_HOME) PATH="$(VENV_IMAGE_JAVA_HOME)/bin:$$PATH" $(VENV_IMAGE_PY) -m pip install -r requirements-image.txt
+	# Install package metadata + console scripts without re-resolving deps.
+	# (Deps are pinned by requirements-image.txt + the numpy/scipy bootstrap above.)
+	$(VENV_IMAGE_PY) -m pip install -e . --no-deps
+
+# Analysis stack — mirrors `make venv` (Python 3.12 + editable install deps)
+venv-analysis:
+	conda create -p ./venv_analysis python=3.12 pip setuptools wheel -y
+	$(VENV_ANALYSIS_PY) -m pip install --upgrade pip wheel packaging "setuptools<81"
+	$(VENV_ANALYSIS_PY) -m pip install -r requirements-analysis.txt
+	# Install package metadata + console scripts without re-resolving deps.
+	# (Deps are controlled by requirements-analysis.txt.)
+	$(VENV_ANALYSIS_PY) -m pip install -e . --no-deps
 
 # Install package
 install:
@@ -33,7 +68,7 @@ install:
 
 # Install with development dependencies
 install-dev:
-	pip install -e ".[dev]"
+	pip install -e ".[analysis,dev]"
 
 # Build distribution packages
 build:
@@ -48,6 +83,20 @@ test:
 # Run only unit tests
 test-unit:
 	pytest tests/unit/ -v --basetemp=.pytest_tmp
+
+test-unit-analysis:
+	@$(VENV_ANALYSIS_PY) -m pytest tests/unit/ -v --basetemp=.pytest_tmp
+
+test-unit-image:
+	@$(VENV_IMAGE_PY) -m pytest tests/unit/test_lazy_cli.py tests/unit/test_csv2zarr_bridge.py -v --basetemp=.pytest_tmp
+
+check-env-analysis:
+	@$(VENV_ANALYSIS_PY) scripts/validate_env.py analysis
+
+check-env-image:
+	@JAVA_HOME=$(VENV_IMAGE_JAVA_HOME) PATH="$(VENV_IMAGE_JAVA_HOME)/bin:$$PATH" $(VENV_IMAGE_PY) scripts/validate_env.py image
+
+test-all-envs: test-unit-analysis test-unit-image
 
 # Run only functional tests
 test-functional:
@@ -100,6 +149,8 @@ clean:
 # Clean everything including venv
 clean-all: clean
 	rm -rf venv/
+	rm -rf venv_image/
+	rm -rf venv_analysis/
 	@echo "Cleaned everything including venv"
 
 # Development workflow shortcuts

@@ -109,6 +109,8 @@ celerybeat.pid
 .venv
 env/
 venv/
+venv_image/
+venv_analysis/
 ENV/
 env.bak/
 venv.bak/
@@ -170,6 +172,7 @@ results/
 results_*/
 output/
 plots/
+tmp/
 
 # Temporary files
 *.tmp
@@ -181,6 +184,7 @@ plots/
 tests/test_data/*.zarr
 tests/test_data/subsampled_*.zarr
 tests/test_data/*.oir
+tests/functional/csv2zarr_artifacts/
 
 # Log files
 *.log
