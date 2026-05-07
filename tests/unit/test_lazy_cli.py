@@ -28,7 +28,9 @@ def test_create_analysis_parser_exposes_core_commands():
     for a in p._actions:
         if isinstance(a, argparse._SubParsersAction) and a.choices:
             names |= set(a.choices.keys())
-    assert {"concat", "normalize", "cluster", "quantitate", "differential"}.issubset(names)
+    assert {"concat", "normalize", "cluster", "quantitate", "csv2zarr", "differential"}.issubset(
+        names
+    )
 
 
 def test_image_parser_lists_image_subcommands():

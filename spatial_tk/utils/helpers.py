@@ -5,13 +5,16 @@ Utility helper functions for spatial_tk.
 This module contains common functionality used across multiple commands.
 """
 
+from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-import spatialdata as sd
-import anndata as ad
-import pandas as pd
+if TYPE_CHECKING:
+    import anndata as ad
+    import pandas as pd
+    import spatialdata as sd
 
 
 def setup_logging(level: int = logging.INFO):
@@ -23,7 +26,7 @@ def setup_logging(level: int = logging.INFO):
     )
 
 
-def get_table(sdata: sd.SpatialData, table_key: Optional[str] = None) -> Optional[ad.AnnData]:
+def get_table(sdata: "sd.SpatialData", table_key: Optional[str] = None) -> Optional["ad.AnnData"]:
     """
     Get AnnData table from SpatialData object.
     
@@ -35,6 +38,9 @@ def get_table(sdata: sd.SpatialData, table_key: Optional[str] = None) -> Optiona
     Returns:
         AnnData table or None if not found
     """
+    # Optional dependency: only required for analysis/image pipelines that load SpatialData.
+    import anndata as ad  # noqa: F401
+
     if hasattr(sdata, 'tables') and len(sdata.tables) > 0:
         if table_key:
             return sdata.tables.get(table_key)
@@ -44,7 +50,11 @@ def get_table(sdata: sd.SpatialData, table_key: Optional[str] = None) -> Optiona
     return None
 
 
-def set_table(sdata: sd.SpatialData, adata: ad.AnnData, table_key: Optional[str] = None) -> None:
+def set_table(
+    sdata: "sd.SpatialData",
+    adata: "ad.AnnData",
+    table_key: Optional[str] = None,
+) -> None:
     """
     Set AnnData table in SpatialData object.
     
@@ -54,6 +64,8 @@ def set_table(sdata: sd.SpatialData, adata: ad.AnnData, table_key: Optional[str]
         sdata: SpatialData object
         adata: AnnData table to set
     """
+    import anndata as ad  # noqa: F401
+
     if hasattr(sdata, 'tables') and len(sdata.tables) > 0:
         # Get the table name
         table_name = table_key or list(sdata.tables.keys())[0]
@@ -64,7 +76,7 @@ def set_table(sdata: sd.SpatialData, adata: ad.AnnData, table_key: Optional[str]
         sdata.table = adata
 
 
-def prepare_spatial_data_for_save(adata: ad.AnnData) -> None:
+def prepare_spatial_data_for_save(adata: "ad.AnnData") -> None:
     """
     Prepare AnnData object for saving in SpatialData format.
     
@@ -74,6 +86,8 @@ def prepare_spatial_data_for_save(adata: ad.AnnData) -> None:
     Args:
         adata: AnnData object to prepare
     """
+    import pandas as pd
+
     def _coerce_scalar(value):
         if isinstance(value, (list, tuple)):
             if len(value) == 0:

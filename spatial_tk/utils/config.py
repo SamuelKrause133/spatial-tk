@@ -8,8 +8,13 @@ with command-line arguments.
 
 import argparse
 import logging
-import tomllib
+import sys
 from pathlib import Path
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # Python 3.9–3.10
+    import tomli as tomllib  # type: ignore[import-not-found]
 from typing import Any, Dict, Optional
 
 

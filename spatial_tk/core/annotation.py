@@ -10,6 +10,8 @@ custom gene lists and multiple built-in pathway/TF resources.
 import logging
 from typing import Dict, List, Optional, Tuple
 
+from spatial_tk.core.cli_constants import PRESET_RESOURCE_NAMES
+
 import anndata as ad
 import decoupler as dc
 import numpy as np
@@ -153,9 +155,6 @@ def filter_cells_by_obs(
 # ---------------------------------------------------------------------------
 # Preset resource loading
 # ---------------------------------------------------------------------------
-
-PRESET_RESOURCE_NAMES = ("panglao", "hallmark", "collectri", "dorothea", "progeny")
-
 
 def load_preset_resource(
     name: str,

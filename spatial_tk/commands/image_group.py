@@ -38,7 +38,7 @@ def _register_import_bioformat(subparsers: argparse._SubParsersAction) -> None:
     except ImportError:
         p = subparsers.add_parser(
             "import-bioformat",
-            help="Convert OME-TIFF / OIR and similar to SpatialData / Zarr (Bio-Formats)",
+            help="Convert OME-TIFF / OIR and similar to a csv2zarr export bundle",
         )
         p.set_defaults(func=_missing_subcommand("import-bioformat"))
         return
@@ -128,7 +128,7 @@ def create_image_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  spatial-tk image import-bioformat --input sample.oir --output sample.zarr\n"
+            "  spatial-tk image import-bioformat --input sample.oir --segment --export-dir sample_export\n"
             "  spatial-tk image segment --input sample.zarr --output-mask mask.zarr\n"
             "  spatial-tk image quantify --input sample.zarr --labels-key ...\n"
             "  spatial-tk image extract --input sample.zarr --output crops.zarr\n"
