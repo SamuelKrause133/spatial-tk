@@ -9,13 +9,11 @@ import sys
 from pathlib import Path
 
 from spatial_tk.core.data_io import (
-    load_existing_spatial_data, 
+    load_existing_spatial_data,
     save_spatial_data,
     load_table_only,
-    save_table_only
+    save_table_only,
 )
-from spatial_tk.core import clustering
-from spatial_tk.core import plotting
 from spatial_tk.utils.helpers import (
     get_table, set_table, get_output_path, 
     prepare_spatial_data_for_save, parse_resolutions
@@ -103,6 +101,8 @@ def main(args: argparse.Namespace) -> None:
         sys.exit(1)
     
     try:
+        from spatial_tk.core import clustering, plotting
+
         sdata = None
         if args.inplace:
             # Load SpatialData but skip images

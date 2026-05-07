@@ -7,7 +7,6 @@ concatenating multiple samples, and saving processed results.
 """
 
 import logging
-from numbers import Integral
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Tuple
 
@@ -462,107 +461,6 @@ def save_spatial_data(sdata: sd.SpatialData, output_path: Path, overwrite: bool 
     import shutil
     import tempfile
     
-    def _flatten_chunk_shape(chunks) -> Optional[Tuple[int, ...]]:
-        """
-        Convert dask chunk metadata into zarr-compatible chunk shape.
-
-        Accepts either a flat tuple of ints (already valid) or nested tuple-of-tuples
-        such as ((4096, ..., 2581), (4096, ..., 711)) and extracts per-axis chunk sizes.
-        """
-        if chunks is None:
-            return None
-
-        if isinstance(chunks, tuple) and all(isinstance(c, Integral) for c in chunks):
-            return tuple(int(c) for c in chunks)
-
-        if isinstance(chunks, tuple) and all(isinstance(axis_chunks, tuple) for axis_chunks in chunks):
-            chunk_shape = []
-            for axis_chunks in chunks:
-                if len(axis_chunks) == 0:
-                    return None
-                first_chunk = axis_chunks[0]
-                if not isinstance(first_chunk, Integral):
-                    return None
-                chunk_shape.append(int(first_chunk))
-            return tuple(chunk_shape)
-
-        return None
-
-    def _normalize_label_chunks_for_write(spatial_data: sd.SpatialData) -> None:
-        """
-        Rechunk label elements whose chunk metadata is incompatible with zarr v3.
-        """
-        def _normalize_dataset_chunks(dataset):
-            updated_dataset = dataset
-            changed = False
-
-            for var_name in dataset.data_vars:
-                data_array = dataset[var_name]
-                chunks = getattr(data_array.data, "chunks", None)
-                chunk_shape = _flatten_chunk_shape(chunks)
-                if chunk_shape is None:
-                    continue
-
-                already_flat = isinstance(chunks, tuple) and all(
-                    isinstance(c, Integral) for c in chunks
-                )
-                if already_flat:
-                    continue
-
-                if len(chunk_shape) != len(data_array.dims):
-                    continue
-
-                dim_chunks = {
-                    dim_name: int(size)
-                    for dim_name, size in zip(data_array.dims, chunk_shape)
-                }
-                updated_dataset = updated_dataset.assign(
-                    {var_name: data_array.chunk(dim_chunks)}
-                )
-                changed = True
-
-            return updated_dataset, changed
-
-        if not hasattr(spatial_data, "labels") or not spatial_data.labels:
-            return
-
-        for label_name in list(spatial_data.labels.keys()):
-            label_element = spatial_data.labels[label_name]
-
-            try:
-                if hasattr(label_element, "map_over_datasets"):
-                    changed_any = False
-
-                    def _map_fn(dataset):
-                        nonlocal changed_any
-                        normalized_dataset, changed = _normalize_dataset_chunks(dataset)
-                        changed_any = changed_any or changed
-                        return normalized_dataset
-
-                    normalized_label = label_element.map_over_datasets(_map_fn)
-                    if changed_any:
-                        spatial_data.labels[label_name] = normalized_label
-                        logging.info("  Normalized label chunks for %s", label_name)
-                    continue
-
-                # Fallback for non-datatree label elements.
-                candidate_chunks = getattr(label_element, "chunks", None)
-                if candidate_chunks is None and hasattr(label_element, "data"):
-                    candidate_chunks = getattr(label_element.data, "chunks", None)
-                normalized_chunk_shape = _flatten_chunk_shape(candidate_chunks)
-                if normalized_chunk_shape is None:
-                    continue
-
-                if hasattr(label_element, "chunk"):
-                    spatial_data.labels[label_name] = label_element.chunk(normalized_chunk_shape)
-                    logging.info("  Normalized label chunks for %s", label_name)
-            except Exception as chunk_err:
-                logging.warning(
-                    "  Failed to normalize chunks for label %s: %s",
-                    label_name,
-                    chunk_err,
-                )
-
     def _write_spatial_data(spatial_data: sd.SpatialData) -> None:
         if overwrite and output_path.exists():
             # Workaround for SpatialData limitation: cannot overwrite a store that's currently in use
@@ -598,7 +496,6 @@ def save_spatial_data(sdata: sd.SpatialData, output_path: Path, overwrite: bool 
     logging.info(f"Saving spatial data to {output_path}")
     
     try:
-        _normalize_label_chunks_for_write(sdata)
         _write_spatial_data(sdata)
         repair_table_attrs_on_disk(output_path, tables=_tables_from_sdata(sdata))
     except TypeError as e:

@@ -13,6 +13,26 @@ import warnings
 # Suppress warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+_MISSING_ANALYSIS_MSG = (
+    "This command requires the analysis dependencies, which are not installed in this environment.\n"
+    "Install the analysis stack (recommended via Makefile):\n"
+    "  make venv-analysis\n"
+    "Or install extras:\n"
+    "  pip install -e \".[analysis]\"\n"
+)
+
+
+def _missing_analysis_subcommand(name: str):
+    def _run(_args):
+        print(
+            _MISSING_ANALYSIS_MSG
+            + f"\n(Subcommand '{name}' is not available — missing modules.)\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    return _run
+
 
 def create_parser() -> argparse.ArgumentParser:
     """
@@ -90,6 +110,7 @@ Image / microscopy (optional deps — separate environment):
     _register_quantitate(subparsers)
     _register_spatial_neighbors(subparsers)
     _register_spatial_cluster(subparsers)
+    _register_csv2zarr(subparsers)
     _register_assign(subparsers)
     _register_differential(subparsers)
 
@@ -97,7 +118,12 @@ Image / microscopy (optional deps — separate environment):
 
 
 def _register_concat(subparsers: argparse._SubParsersAction) -> None:
-    from spatial_tk.commands import concat
+    try:
+        from spatial_tk.commands import concat
+    except ImportError:
+        p = subparsers.add_parser("concat", help="Concatenate multiple Xenium .zarr files")
+        p.set_defaults(func=_missing_analysis_subcommand("concat"))
+        return
 
     concat_parser = subparsers.add_parser(
         "concat",
@@ -109,7 +135,12 @@ def _register_concat(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _register_normalize(subparsers: argparse._SubParsersAction) -> None:
-    from spatial_tk.commands import normalize
+    try:
+        from spatial_tk.commands import normalize
+    except ImportError:
+        p = subparsers.add_parser("normalize", help="Normalize and preprocess data")
+        p.set_defaults(func=_missing_analysis_subcommand("normalize"))
+        return
 
     normalize_parser = subparsers.add_parser(
         "normalize",
@@ -121,7 +152,12 @@ def _register_normalize(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _register_cluster(subparsers: argparse._SubParsersAction) -> None:
-    from spatial_tk.commands import cluster
+    try:
+        from spatial_tk.commands import cluster
+    except ImportError:
+        p = subparsers.add_parser("cluster", help="Perform clustering analysis")
+        p.set_defaults(func=_missing_analysis_subcommand("cluster"))
+        return
 
     cluster_parser = subparsers.add_parser(
         "cluster",
@@ -133,7 +169,12 @@ def _register_cluster(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _register_quantitate(subparsers: argparse._SubParsersAction) -> None:
-    from spatial_tk.commands import quantitate
+    try:
+        from spatial_tk.commands import quantitate
+    except ImportError:
+        p = subparsers.add_parser("quantitate", help="Run enrichment scoring (MLM/ULM) on a gene list or built-in resources")
+        p.set_defaults(func=_missing_analysis_subcommand("quantitate"))
+        return
 
     quantitate_parser = subparsers.add_parser(
         "quantitate",
@@ -149,7 +190,12 @@ def _register_quantitate(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _register_spatial_neighbors(subparsers: argparse._SubParsersAction) -> None:
-    from spatial_tk.commands import spatial_neighbors
+    try:
+        from spatial_tk.commands import spatial_neighbors
+    except ImportError:
+        p = subparsers.add_parser("spatial_neighbors", help="Compute spatial neighbor graph with Squidpy")
+        p.set_defaults(func=_missing_analysis_subcommand("spatial_neighbors"))
+        return
 
     spatial_neighbors_parser = subparsers.add_parser(
         "spatial_neighbors",
@@ -164,7 +210,12 @@ def _register_spatial_neighbors(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _register_spatial_cluster(subparsers: argparse._SubParsersAction) -> None:
-    from spatial_tk.commands import spatial_cluster
+    try:
+        from spatial_tk.commands import spatial_cluster
+    except ImportError:
+        p = subparsers.add_parser("spatial_cluster", help="Cluster spatial neighborhood composition profiles")
+        p.set_defaults(func=_missing_analysis_subcommand("spatial_cluster"))
+        return
 
     spatial_cluster_parser = subparsers.add_parser(
         "spatial_cluster",
@@ -178,8 +229,34 @@ def _register_spatial_cluster(subparsers: argparse._SubParsersAction) -> None:
     spatial_cluster_parser.set_defaults(func=spatial_cluster.main)
 
 
+def _register_csv2zarr(subparsers: argparse._SubParsersAction) -> None:
+    try:
+        from spatial_tk.commands import csv2zarr
+    except ImportError:
+        p = subparsers.add_parser(
+            "csv2zarr",
+            help="Convert image-side CSV export bundle to SpatialData zarr",
+        )
+        p.set_defaults(func=_missing_analysis_subcommand("csv2zarr"))
+        return
+
+    csv2zarr_parser = subparsers.add_parser(
+        "csv2zarr",
+        help=getattr(csv2zarr, "CLI_HELP", "Convert CSV bundle to SpatialData zarr"),
+        description=getattr(csv2zarr, "CLI_DESCRIPTION", "Build a SpatialData zarr from flat files."),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    csv2zarr.add_arguments(csv2zarr_parser)
+    csv2zarr_parser.set_defaults(func=csv2zarr.main)
+
+
 def _register_assign(subparsers: argparse._SubParsersAction) -> None:
-    from spatial_tk.commands import assign
+    try:
+        from spatial_tk.commands import assign
+    except ImportError:
+        p = subparsers.add_parser("assign", help="Assign cell type labels to clusters from enrichment scores")
+        p.set_defaults(func=_missing_analysis_subcommand("assign"))
+        return
 
     assign_parser = subparsers.add_parser(
         "assign",
@@ -195,7 +272,12 @@ def _register_assign(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _register_differential(subparsers: argparse._SubParsersAction) -> None:
-    from spatial_tk.commands import differential
+    try:
+        from spatial_tk.commands import differential
+    except ImportError:
+        p = subparsers.add_parser("differential", help="Differential expression analysis")
+        p.set_defaults(func=_missing_analysis_subcommand("differential"))
+        return
 
     differential_parser = subparsers.add_parser(
         "differential",

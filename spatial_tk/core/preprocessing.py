@@ -157,34 +157,3 @@ def select_variable_genes(adata: ad.AnnData, n_top_genes: int = 2000, resume: bo
     
     return adata
 
-
-def downsample_cells(adata: ad.AnnData, fraction: float) -> ad.AnnData:
-    """
-    Randomly downsample cells to specified fraction.
-    
-    Args:
-        adata: AnnData object
-        fraction: Fraction of cells to keep (0-1)
-        
-    Returns:
-        Downsampled AnnData object
-    """
-    if fraction <= 0 or fraction > 1:
-        raise ValueError("Downsample fraction must be between 0 and 1")
-    
-    if fraction == 1.0:
-        logging.info("No downsampling (fraction=1.0)")
-        return adata
-    
-    n_cells_original = adata.n_obs
-    n_cells_keep = int(n_cells_original * fraction)
-    
-    logging.info(f"Downsampling from {n_cells_original} to {n_cells_keep} cells (fraction={fraction})")
-    
-    # Randomly sample cells
-    sc.pp.subsample(adata, fraction=fraction)
-    
-    logging.info(f"Downsampled: {adata.n_obs} cells remaining")
-    
-    return adata
-

@@ -14,12 +14,8 @@ from pathlib import Path
 from typing import Optional, List
 
 import pandas as pd
-import scanpy as sc
-import numpy as np
 
 from spatial_tk.core.data_io import load_existing_spatial_data
-from spatial_tk.core import annotation
-from spatial_tk.core import plotting
 from spatial_tk.utils.helpers import get_table
 from spatial_tk.utils.config import load_config, merge_config_with_args
 
@@ -103,6 +99,8 @@ def perform_gene_expression_de(
         output_dir: Output directory
         n_genes: Number of top genes to save
     """
+    import scanpy as sc
+
     logging.info("Performing gene expression differential analysis")
     
     if compare_groups and len(compare_groups) == 2:
@@ -309,6 +307,9 @@ def main(args: argparse.Namespace) -> None:
             sys.exit(1)
     
     try:
+        import scanpy as sc
+        from spatial_tk.core import plotting
+
         # Load spatial data
         sdata = load_existing_spatial_data(input_path)
         adata = get_table(sdata)

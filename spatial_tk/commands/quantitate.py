@@ -13,8 +13,9 @@ import logging
 import sys
 from pathlib import Path
 
-from spatial_tk.core.data_io import load_existing_spatial_data, save_spatial_data
+from spatial_tk.core.cli_constants import PRESET_RESOURCE_NAMES
 from spatial_tk.core import annotation
+from spatial_tk.core.data_io import load_existing_spatial_data, save_spatial_data
 from spatial_tk.utils.helpers import (
     get_table, set_table, get_output_path,
     prepare_spatial_data_for_save,
@@ -22,7 +23,6 @@ from spatial_tk.utils.helpers import (
 from spatial_tk.utils.config import load_config, merge_config_with_args
 
 VALID_METHODS = ("mlm", "ulm")
-VALID_PRESETS = annotation.PRESET_RESOURCE_NAMES  # ('panglao', 'hallmark', ...)
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
@@ -75,7 +75,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         help=(
             "Comma-separated list of built-in decoupler resources to score against. "
-            f"Valid names: {', '.join(VALID_PRESETS)}. "
+            f"Valid names: {', '.join(PRESET_RESOURCE_NAMES)}. "
             "Each resource is stored at obsm['score_<method>_<resource>']."
         ),
     )
