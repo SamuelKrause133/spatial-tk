@@ -126,9 +126,17 @@ def main(args: argparse.Namespace) -> None:
 
     if args.montage_png:
         n = min(args.max_chips, chips.shape[0])
-        # normalize first channel for display
-        disp = chips[:n].astype(np.float32)
-        if disp.shape[-1] >= 1:
+        disp = chips[:n].astype(np.float32, copy=True)
+        if args.include_mask_channel:
+            mask = disp[..., -1] > 0
+            disp = disp[..., :-1]
+            disp[~mask] = 0
+        if disp.shape[-1] >= 3:
+            disp = disp[..., :3]
+            lo = disp.min(axis=(0, 1, 2), keepdims=True)
+            hi = disp.max(axis=(0, 1, 2), keepdims=True)
+            disp = (disp - lo) / (hi - lo + 1e-9)
+        elif disp.shape[-1] >= 1:
             d0 = disp[..., 0]
             d0 = (d0 - d0.min()) / (np.ptp(d0) + 1e-9)
             disp = d0[..., np.newaxis]

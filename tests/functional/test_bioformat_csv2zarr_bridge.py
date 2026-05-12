@@ -8,6 +8,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 
@@ -38,10 +39,7 @@ def _object_count(objects_csv: Path) -> int:
         return sum(1 for _ in csv.DictReader(fh))
 
 
-@pytest.mark.slow
-@pytest.mark.functional_full
-def test_import_bioformat_oir_bundle_loads_with_csv2zarr():
-    """Read the local OIR fixture in the image env, then assemble/read SpatialData in analysis."""
+def _build_oir_csv2zarr_artifacts() -> tuple[Path, Path, Path, Path, dict[str, str]]:
     repo = _repo_root()
     oir_path = Path(os.getenv("SPATIAL_TK_TEST_OIR", repo / "tests" / "test_data" / "test.oir"))
     image_python = _python_from_env("SPATIAL_TK_IMAGE_PYTHON", "venv_image/bin/python")
@@ -119,6 +117,15 @@ def test_import_bioformat_oir_bundle_loads_with_csv2zarr():
     assert csv2zarr_result.returncode == 0, csv2zarr_result.stderr
     assert output_zarr.exists()
 
+    return artifact_dir, export_dir, output_zarr, analysis_python, base_env
+
+
+@pytest.mark.slow
+@pytest.mark.functional_full
+def test_import_bioformat_oir_bundle_loads_with_csv2zarr():
+    """Read the local OIR fixture in the image env, then assemble/read SpatialData in analysis."""
+    _, _, output_zarr, analysis_python, base_env = _build_oir_csv2zarr_artifacts()
+
     read_result = _run(
         [
             str(analysis_python),
@@ -140,3 +147,52 @@ def test_import_bioformat_oir_bundle_loads_with_csv2zarr():
         env=base_env,
     )
     assert read_result.returncode == 0, read_result.stderr
+
+
+@pytest.mark.slow
+@pytest.mark.functional_full
+def test_analysis_extracts_nuclear_chips_from_csv2zarr_artifact():
+    """Use the analysis env to crop chips from the zarr assembled from import-bioformat output."""
+    artifact_dir, _, output_zarr, analysis_python, base_env = _build_oir_csv2zarr_artifacts()
+
+    montage_png = artifact_dir / "chips_montage.png"
+    chips_output_zarr = artifact_dir / "oir_bridge_chips_copy.zarr"
+    extract_result = _run(
+        [
+            str(analysis_python),
+            "-m",
+            "spatial_tk.cli",
+            "image",
+            "extract",
+            "--input",
+            str(output_zarr),
+            "--image-key",
+            "bioformat_image",
+            "--labels-key",
+            "test_labels",
+            "--chip-size",
+            "64",
+            "64",
+            "--include-mask-channel",
+            "--montage-png",
+            str(montage_png),
+            "--max-chips",
+            "12",
+            "--output",
+            str(chips_output_zarr),
+        ],
+        env=base_env,
+    )
+    assert extract_result.returncode == 0, extract_result.stderr
+
+    chips_npz = artifact_dir / "oir_bridge.zarr_chips" / "chips.npz"
+    assert chips_npz.exists()
+    assert montage_png.exists()
+    assert chips_output_zarr.exists()
+
+    with np.load(chips_npz) as data:
+        chips = data["chips"]
+    assert chips.ndim == 4
+    assert chips.shape[0] >= 10
+    assert chips.shape[1:3] == (64, 64)
+    assert chips.shape[-1] == 4  # 3 image channels + mask channel
