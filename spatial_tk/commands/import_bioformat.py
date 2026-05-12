@@ -27,10 +27,16 @@ CLI_DESCRIPTION = (
 )
 
 logger = logging.getLogger(__name__)
+_BIOFORMATS_VM_STARTED = False
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--input", required=False, help="Input microscopy file (.oir, .ome.tif, …)")
+    parser.add_argument(
+        "--batch-csv",
+        required=False,
+        help="CSV with input_path, bridge_path, zarr_path columns for batch bridge export.",
+    )
     parser.add_argument(
         "--export-dir",
         required=False,
@@ -117,6 +123,27 @@ def _dtype(name: str) -> type:
     return np.float32 if name == "float32" else np.float64
 
 
+def _resolve_manifest_path(base: Path, value: Any) -> Path:
+    path = Path(str(value)).expanduser()
+    if not path.is_absolute():
+        path = base / path
+    return path.resolve()
+
+
+def _read_batch_manifest(path: Path) -> tuple[Any, Path]:
+    import pandas as pd
+
+    manifest = Path(path).expanduser().resolve()
+    df = pd.read_csv(manifest)
+    required = {"input_path", "bridge_path", "zarr_path"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"batch CSV missing required columns: {sorted(missing)}")
+    if df.empty:
+        raise ValueError("batch CSV must contain at least one row")
+    return df, manifest.parent
+
+
 def _read_tiff(path: Path, dt: type) -> np.ndarray:
     import tifffile
 
@@ -134,47 +161,62 @@ def _read_tiff(path: Path, dt: type) -> np.ndarray:
 
 def _read_bioformats_javabridge(path: Path, dt: type, z_mode: str) -> np.ndarray:
     """Java/Bio-Formats via python-bioformats + javabridge (no PIMS / JPype)."""
+    global _BIOFORMATS_VM_STARTED
     import javabridge
     import bioformats
     from bioformats import ImageReader
 
+    # A killed JVM cannot be restarted in the same Python process, so batch mode
+    # starts Bio-Formats once and reuses the active JVM for subsequent rows.
     javabridge.start_vm(class_path=bioformats.JARS, run_headless=True, max_heap_size="4096m")
+    _BIOFORMATS_VM_STARTED = True
+    z_use_max = z_mode == "max"
+    with ImageReader(path=str(path)) as reader:
+        reader.rdr.setSeries(0)
+        nz = reader.rdr.getSizeZ()
+        nc = reader.rdr.getSizeC()
+
+        def read_plane(z: int, c: int) -> np.ndarray:
+            im = reader.read(c=c, z=z, t=0, rescale=False)
+            if im.ndim == 3:
+                if im.shape[2] <= 8:
+                    return im[..., 0].astype(np.float32)
+                raise ValueError(f"Unsupported multichannel plane shape {im.shape}")
+            return im.astype(np.float32)
+
+        z_planes: List[np.ndarray] = []
+        for zi in range(nz):
+            chans = [read_plane(zi, ci) for ci in range(nc)]
+            z_planes.append(np.stack(chans, axis=0))
+
+        if nz == 0:
+            raise ValueError("Bio-Formats reported zero Z planes")
+
+        cyx_vol: np.ndarray
+        if nz == 1:
+            cyx_vol = z_planes[0]
+        elif z_use_max:
+            vol_czyx = np.stack(z_planes, axis=1)
+            cyx_vol = np.max(vol_czyx, axis=1)
+        else:
+            vol_czyx = np.stack(z_planes, axis=1)
+            cyx_vol = vol_czyx[:, nz // 2, ...]
+
+    return cyx_vol.astype(dt, copy=False)
+
+
+def _shutdown_bioformats_vm() -> None:
+    global _BIOFORMATS_VM_STARTED
+    if not _BIOFORMATS_VM_STARTED:
+        return
     try:
-        z_use_max = z_mode == "max"
-        with ImageReader(path=str(path)) as reader:
-            reader.rdr.setSeries(0)
-            nz = reader.rdr.getSizeZ()
-            nc = reader.rdr.getSizeC()
+        import javabridge
 
-            def read_plane(z: int, c: int) -> np.ndarray:
-                im = reader.read(c=c, z=z, t=0, rescale=False)
-                if im.ndim == 3:
-                    if im.shape[2] <= 8:
-                        return im[..., 0].astype(np.float32)
-                    raise ValueError(f"Unsupported multichannel plane shape {im.shape}")
-                return im.astype(np.float32)
-
-            z_planes: List[np.ndarray] = []
-            for zi in range(nz):
-                chans = [read_plane(zi, ci) for ci in range(nc)]
-                z_planes.append(np.stack(chans, axis=0))
-
-            if nz == 0:
-                raise ValueError("Bio-Formats reported zero Z planes")
-
-            cyx_vol: np.ndarray
-            if nz == 1:
-                cyx_vol = z_planes[0]
-            elif z_use_max:
-                vol_czyx = np.stack(z_planes, axis=1)
-                cyx_vol = np.max(vol_czyx, axis=1)
-            else:
-                vol_czyx = np.stack(z_planes, axis=1)
-                cyx_vol = vol_czyx[:, nz // 2, ...]
-
-        return cyx_vol.astype(dt, copy=False)
-    finally:
         javabridge.kill_vm()
+    except Exception as e:
+        logger.warning("Failed to shut down Bio-Formats JVM cleanly: %s", e)
+    finally:
+        _BIOFORMATS_VM_STARTED = False
 
 
 def read_to_cyx(path: Path, dtype: type, z_projection: str) -> np.ndarray:
@@ -352,26 +394,8 @@ def _write_export_bundle(
     logger.info("Wrote csv2zarr export bundle to %s", export_dir)
 
 
-def main(args: argparse.Namespace) -> None:
-    setup_logging()
-    if args.config:
-        temp = argparse.ArgumentParser()
-        add_arguments(temp)
-        try:
-            cfg = load_config(args.config)
-            args = merge_config_with_args("import_bioformat", cfg, args, temp)
-        except Exception as e:
-            logging.error("Config error: %s", e)
-            sys.exit(1)
-
-    if not args.input:
-        logging.error("--input is required")
-        sys.exit(1)
-    if not args.export_dir:
-        logging.error("--export-dir is required")
-        sys.exit(1)
-
-    inp = Path(args.input).expanduser().resolve()
+def _run_one(args: argparse.Namespace, input_path: Path, export_dir: Path) -> None:
+    inp = Path(input_path).expanduser().resolve()
     dt = _dtype(args.dtype)
 
     logger.info("Reading %s", inp)
@@ -405,7 +429,7 @@ def main(args: argparse.Namespace) -> None:
     _write_export_bundle(
         cyx=cyx,
         labels=labels,
-        export_dir=Path(args.export_dir).expanduser().resolve(),
+        export_dir=Path(export_dir).expanduser().resolve(),
         image_key=args.image_key,
         labels_key=args.labels_key,
         shapes_key=args.shapes_key,
@@ -413,3 +437,46 @@ def main(args: argparse.Namespace) -> None:
         coord_system=args.coord_system,
         source_path=inp,
     )
+
+
+def main(args: argparse.Namespace) -> None:
+    setup_logging()
+    if args.config:
+        temp = argparse.ArgumentParser()
+        add_arguments(temp)
+        try:
+            cfg = load_config(args.config)
+            args = merge_config_with_args("import_bioformat", cfg, args, temp)
+        except Exception as e:
+            logging.error("Config error: %s", e)
+            sys.exit(1)
+
+    try:
+        batch_csv = getattr(args, "batch_csv", None)
+        try:
+            if batch_csv:
+                manifest, base = _read_batch_manifest(Path(batch_csv))
+                for idx, row in manifest.iterrows():
+                    input_path = _resolve_manifest_path(base, row["input_path"])
+                    bridge_path = _resolve_manifest_path(base, row["bridge_path"])
+                    logger.info("Processing batch row %s: %s -> %s", idx, input_path, bridge_path)
+                    _run_one(args, input_path, bridge_path)
+                return
+
+            if not args.input:
+                logging.error("--input is required")
+                sys.exit(1)
+            if not args.export_dir:
+                logging.error("--export-dir is required")
+                sys.exit(1)
+
+            _run_one(
+                args,
+                Path(args.input).expanduser().resolve(),
+                Path(args.export_dir).expanduser().resolve(),
+            )
+        finally:
+            _shutdown_bioformats_vm()
+    except Exception as e:
+        logging.error("import-bioformat failed: %s", e)
+        sys.exit(1)
