@@ -21,6 +21,15 @@ def _python_from_env(env_var: str, default_relative: str) -> Path:
     return Path(override).expanduser().resolve() if override else _repo_root() / default_relative
 
 
+def _spatial_tk_cmd(python_exe: Path) -> list[str]:
+    """Invoke the installed ``spatial-tk`` script with this interpreter.
+
+    setuptools may record a different shebang than ``python_exe``; running
+    ``python_exe`` on the script matches ``source …/bin/activate`` then ``spatial-tk``.
+    """
+    return [str(python_exe), str(python_exe.parent / "spatial-tk")]
+
+
 def _image_env(base_env: dict[str, str], image_python: Path) -> dict[str, str]:
     env = dict(base_env)
     prefix = image_python.parent.parent
@@ -51,6 +60,12 @@ def _build_oir_csv2zarr_artifacts() -> tuple[Path, Path, Path, Path, dict[str, s
         pytest.skip(f"image environment python not found: {image_python}")
     if not analysis_python.exists():
         pytest.skip(f"analysis environment python not found: {analysis_python}")
+    image_cmd = _spatial_tk_cmd(image_python)
+    analysis_cmd = _spatial_tk_cmd(analysis_python)
+    if not Path(image_cmd[1]).exists():
+        pytest.skip(f"spatial-tk script not found for image env: {image_cmd[1]}")
+    if not Path(analysis_cmd[1]).exists():
+        pytest.skip(f"spatial-tk script not found for analysis env: {analysis_cmd[1]}")
 
     artifact_dir = repo / "tests" / "functional" / "csv2zarr_artifacts"
     if artifact_dir.exists():
@@ -64,9 +79,7 @@ def _build_oir_csv2zarr_artifacts() -> tuple[Path, Path, Path, Path, dict[str, s
 
     import_result = _run(
         [
-            str(image_python),
-            "-m",
-            "spatial_tk.cli",
+            *image_cmd,
             "image",
             "import-bioformat",
             "--input",
@@ -103,9 +116,7 @@ def _build_oir_csv2zarr_artifacts() -> tuple[Path, Path, Path, Path, dict[str, s
 
     csv2zarr_result = _run(
         [
-            str(analysis_python),
-            "-m",
-            "spatial_tk.cli",
+            *analysis_cmd,
             "csv2zarr",
             "--metadata-json",
             str(export_dir / "metadata.json"),
@@ -159,9 +170,7 @@ def test_analysis_extracts_nuclear_chips_from_csv2zarr_artifact():
     chips_output_zarr = artifact_dir / "oir_bridge_chips_copy.zarr"
     extract_result = _run(
         [
-            str(analysis_python),
-            "-m",
-            "spatial_tk.cli",
+            *_spatial_tk_cmd(analysis_python),
             "image",
             "extract",
             "--input",
@@ -213,6 +222,12 @@ def test_batch_manifest_converts_three_oirs_to_bridges_and_zarrs():
         pytest.skip(f"image environment python not found: {image_python}")
     if not analysis_python.exists():
         pytest.skip(f"analysis environment python not found: {analysis_python}")
+    image_cmd = _spatial_tk_cmd(image_python)
+    analysis_cmd = _spatial_tk_cmd(analysis_python)
+    if not Path(image_cmd[1]).exists():
+        pytest.skip(f"spatial-tk script not found for image env: {image_cmd[1]}")
+    if not Path(analysis_cmd[1]).exists():
+        pytest.skip(f"spatial-tk script not found for analysis env: {analysis_cmd[1]}")
 
     artifact_dir = repo / "tests" / "functional" / "csv2zarr_artifacts"
     if artifact_dir.exists():
@@ -239,9 +254,7 @@ def test_batch_manifest_converts_three_oirs_to_bridges_and_zarrs():
     base_env = dict(os.environ)
     image_result = _run(
         [
-            str(image_python),
-            "-m",
-            "spatial_tk.cli",
+            *image_cmd,
             "image",
             "import-bioformat",
             "--batch-csv",
@@ -279,9 +292,7 @@ def test_batch_manifest_converts_three_oirs_to_bridges_and_zarrs():
 
     zarr_result = _run(
         [
-            str(analysis_python),
-            "-m",
-            "spatial_tk.cli",
+            *analysis_cmd,
             "csv2zarr",
             "--batch-csv",
             str(manifest_path),
