@@ -1,4 +1,4 @@
-# Pip deps for `./venv_analysis` (after minimal conda bootstrap; see makefile).
+# Pip deps for `./venv` (after minimal conda bootstrap; see makefile).
 
 numpy>=1.26,<3
 scipy>=1.12

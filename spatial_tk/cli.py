@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 _MISSING_ANALYSIS_MSG = (
     "This command requires the analysis dependencies, which are not installed in this environment.\n"
     "Install the analysis stack (recommended via Makefile):\n"
-    "  make venv-analysis\n"
+    "  make venv\n"
     "Or install extras:\n"
     "  pip install -e \".[analysis]\"\n"
 )

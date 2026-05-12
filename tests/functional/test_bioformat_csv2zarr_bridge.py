@@ -43,7 +43,7 @@ def _build_oir_csv2zarr_artifacts() -> tuple[Path, Path, Path, Path, dict[str, s
     repo = _repo_root()
     oir_path = Path(os.getenv("SPATIAL_TK_TEST_OIR", repo / "tests" / "test_data" / "test.oir"))
     image_python = _python_from_env("SPATIAL_TK_IMAGE_PYTHON", "venv_image/bin/python")
-    analysis_python = _python_from_env("SPATIAL_TK_ANALYSIS_PYTHON", "venv_analysis/bin/python")
+    analysis_python = _python_from_env("SPATIAL_TK_ANALYSIS_PYTHON", "venv/bin/python")
 
     if not oir_path.exists():
         pytest.skip(f"OIR fixture not found: {oir_path}")
@@ -205,7 +205,7 @@ def test_batch_manifest_converts_three_oirs_to_bridges_and_zarrs():
     repo = _repo_root()
     oir_path = Path(os.getenv("SPATIAL_TK_TEST_OIR", repo / "tests" / "test_data" / "test.oir"))
     image_python = _python_from_env("SPATIAL_TK_IMAGE_PYTHON", "venv_image/bin/python")
-    analysis_python = _python_from_env("SPATIAL_TK_ANALYSIS_PYTHON", "venv_analysis/bin/python")
+    analysis_python = _python_from_env("SPATIAL_TK_ANALYSIS_PYTHON", "venv/bin/python")
 
     if not oir_path.exists():
         pytest.skip(f"OIR fixture not found: {oir_path}")

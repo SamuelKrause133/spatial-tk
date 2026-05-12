@@ -16,6 +16,7 @@ from typing import Any, Callable
 _MISSING_MSG = (
     "The 'spatial-tk image' pipeline is optional and not installed in this environment.\n"
     "Use the project image environment:\n"
+    "  make venv-image\n"
     "  conda env create -p ./venv_image -f image.env.yaml\n"
     "  ./venv_image/bin/python -m spatial_tk.cli image --help\n"
 )

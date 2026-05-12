@@ -46,7 +46,7 @@ See `pyproject.toml` for complete dependency list.
 To avoid dependency solver conflicts between the analysis and image stacks, the recommended workflow is two separate conda prefixes created via Makefile:
 
 ```bash
-make venv-analysis
+make venv
 make venv-image
 ```
 

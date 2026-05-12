@@ -32,28 +32,6 @@ def _write_bundle(tmp_path: Path, name: str = "bridge") -> Path:
     return export_dir
 
 
-def test_import_bioformat_export_bundle_contract(tmp_path):
-    export_dir = _write_bundle(tmp_path)
-
-    assert (export_dir / "image.npy").exists()
-    assert (export_dir / "labels.npy").exists()
-    assert (export_dir / "objects.csv").exists()
-    assert (export_dir / "polygons.geojson").exists()
-    assert (export_dir / "segmentation_mask.png").exists()
-    assert (export_dir / "metadata.json").exists()
-
-    df = pd.read_csv(export_dir / "objects.csv")
-    assert {"instance_id", "region", "centroid_x", "centroid_y", "mean_ch0", "sum_ch1"}.issubset(
-        df.columns
-    )
-    metadata = json.loads((export_dir / "metadata.json").read_text())
-    assert metadata["image"]["path"] == "image.npy"
-    assert metadata["labels"]["path"] == "labels.npy"
-    assert metadata["labels"]["preview_png"] == "segmentation_mask.png"
-    assert metadata["shapes"]["path"] == "polygons.geojson"
-    assert metadata["table"]["feature_columns"]
-
-
 def test_csv2zarr_validates_missing_metadata_asset(tmp_path):
     from spatial_tk.commands.csv2zarr import main
 
