@@ -52,10 +52,10 @@ leiden_resolution = "0.5"
   save_plots = false
   ```
 
-- **Null values**: Use `null` (lowercase)
+- **Optional / unset values**: TOML has no `null` type. Omit the key (or leave it commented) to use the CLI default (`None` in Python).
   ```toml
-  cluster_key = null
-  compare_groups = null
+  # cluster_key = "leiden_res0p5"   # omit → all leiden_res* columns
+  # compare_groups = "HIV,NEG"      # omit → markers for all groups
   ```
 
 - **Arrays/Comma-separated values**: For parameters that accept multiple values

@@ -53,7 +53,7 @@ panglao_min_sensitivity = 0.5
 # Only use canonical PanglaoDB markers
 panglao_canonical_only = true
 # No cell filter — score all cells
-filter_obs = null
+# filter_obs = null   # TOML has no null; leave commented to use default (None)
 # Generate and save enrichment heatmap plots
 save_plots = true
 
@@ -65,9 +65,9 @@ inplace = true
 # obsm key of the scores to assign from (produced by quantitate)
 score_key = "score_mlm_custom"
 # Use all leiden_res* columns
-cluster_key = null
+# cluster_key = null     # TOML has no null; leave commented to use default (None)
 # Default annotation key naming
-annotation_key = null
+# annotation_key = null  # TOML has no null; leave commented to use default (None)
 # Assignment strategy
 strategy = "top_positive"
 # Run differential expression
@@ -75,27 +75,21 @@ run_de = true
 # Generate and save annotation plots
 save_plots = true
 
-#[differential]
+[differential]
 # Path to input .zarr file with annotations
-#input = "data.zarr"
+input = "data.zarr"
 # Directory to save differential analysis results
-#output_dir = "results/"
+output_dir = "results/"
 # Column in obs to group by for differential analysis
-# (e.g., "status", "cell_type", or "leiden_res0p5")
-#groupby = "leiden_res0p5"
-# Comma-separated list of exactly 2 groups to compare (Mode A)
-# E.g., "HIV,NEG". If null, finds markers for all groups (Mode B)
-#compare_groups = null
-# Optional obsm layer to use for enrichment-based differential analysis
-# (e.g., "score_mlm_PanglaoDB")
-#obsm_layer = null
-# Statistical test method for gene expression DE
-# Options: "wilcoxon", "t-test", "logreg"
-#method = "wilcoxon"
-# Layer to use for gene expression (null uses .X)
-#layer = null
-# Generate and save differential analysis plots
-#save_plots = false
-# Number of top genes to save per group
-#n_genes = 100
+groupby = "leiden_res0p5"
+# Comma-separated list of exactly 2 groups to compare (Mode A); omit for all groups (Mode B)
+# compare_groups = "HIV,NEG"
+# Optional obsm layer for enrichment-based differential analysis (e.g. "score_mlm_PanglaoDB")
+# obsm_layer = "score_mlm_PanglaoDB"
+# Statistical test method for gene expression DE: "wilcoxon", "t-test", "logreg"
+method = "wilcoxon"
+# Layer for gene expression DE; omit to use .X
+# layer = "counts"
+save_plots = false
+n_genes = 100
 

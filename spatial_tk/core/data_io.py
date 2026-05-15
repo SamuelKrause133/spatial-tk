@@ -600,6 +600,7 @@ def save_spatial_data(sdata: sd.SpatialData, output_path: Path, overwrite: bool 
     try:
         _normalize_label_chunks_for_write(sdata)
         _write_spatial_data(sdata)
+        _ensure_table_attrs_on_disk(sdata, output_path)
     except TypeError as e:
         chunk_shape_error = "Expected an iterable of integers" in str(e)
         has_labels = hasattr(sdata, "labels") and bool(sdata.labels)
@@ -616,11 +617,142 @@ def save_spatial_data(sdata: sd.SpatialData, output_path: Path, overwrite: bool 
                 shutil.rmtree(output_path)
             sdata.labels = {}
             _write_spatial_data(sdata)
+            _ensure_table_attrs_on_disk(sdata, output_path)
         finally:
             sdata.labels = original_labels
     except Exception as e:
         logging.error(f"Failed to save spatial data: {e}")
         raise
+
+
+def _ensure_table_attrs_on_disk(sdata: sd.SpatialData, output_path: Path) -> None:
+    """
+    Verify and repair on-disk table metadata so each ``tables/<name>`` group has
+    the required SpatialData attributes (``spatialdata-encoding-type``,
+    ``region``, ``region_key``, ``instance_key``, ``version``).
+
+    SpatialData's ``write_table`` populates these attributes from
+    ``table.uns['spatialdata_attrs']``, but under zarr v3 + anndata 0.12 some
+    code paths end up with an empty ``attributes: {}`` block in
+    ``tables/<name>/zarr.json``. That causes the downstream
+    ``spatialdata._io.io_table._read_table`` ``assert version is not None``
+    failure on subsequent reads (e.g. during ``normalize``).
+
+    This routine is idempotent: when the writer succeeded, the on-disk attrs
+    already match and nothing is written. When the attrs are missing or empty,
+    we merge them in from the in-memory ``table.uns['spatialdata_attrs']`` and
+    the current ``CurrentTablesFormat`` version, then rewrite the JSON file
+    atomically.
+    """
+    import json
+    import os
+
+    try:
+        from spatialdata._io.format import CurrentTablesFormat
+        current_version = CurrentTablesFormat().spatialdata_format_version
+    except Exception:
+        current_version = "0.1"
+
+    required_keys = ("spatialdata-encoding-type", "region", "region_key", "instance_key", "version")
+
+    tables_dir = output_path / "tables"
+    if not tables_dir.exists():
+        return
+
+    in_memory_tables = {}
+    if hasattr(sdata, "tables") and sdata.tables:
+        in_memory_tables = dict(sdata.tables)
+    elif getattr(sdata, "table", None) is not None:
+        in_memory_tables = {"table": sdata.table}
+
+    def _normalize_region(value):
+        if value is None:
+            return None
+        if hasattr(value, "tolist"):
+            value = value.tolist()
+        if isinstance(value, (tuple, set)):
+            value = list(value)
+        return value
+
+    def _expected_attrs_for(name: str) -> dict:
+        table = in_memory_tables.get(name)
+        attrs_src = {}
+        if table is not None:
+            attrs_src = dict(table.uns.get("spatialdata_attrs", {}) or {})
+        return {
+            "spatialdata-encoding-type": "ngff:regions_table",
+            "region": _normalize_region(attrs_src.get("region")),
+            "region_key": attrs_src.get("region_key"),
+            "instance_key": attrs_src.get("instance_key"),
+            "version": current_version,
+        }
+
+    def _atomic_write_json(path: Path, payload: dict) -> None:
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        with open(tmp_path, "w") as fh:
+            json.dump(payload, fh, indent=4)
+        os.replace(tmp_path, path)
+
+    for table_dir in sorted(p for p in tables_dir.iterdir() if p.is_dir()):
+        expected = _expected_attrs_for(table_dir.name)
+        zarr_v3_path = table_dir / "zarr.json"
+        zattrs_path = table_dir / ".zattrs"
+
+        if zarr_v3_path.exists():
+            try:
+                with open(zarr_v3_path, "r") as fh:
+                    doc = json.load(fh)
+            except Exception as exc:
+                logging.warning("Could not read %s: %s", zarr_v3_path, exc)
+                continue
+
+            attributes = doc.get("attributes")
+            if not isinstance(attributes, dict):
+                attributes = {}
+
+            missing = [k for k in required_keys if k not in attributes]
+            if not missing:
+                continue
+
+            logging.warning(
+                "Repairing table attrs in %s (missing: %s)",
+                zarr_v3_path,
+                missing,
+            )
+            for key in required_keys:
+                if key not in attributes:
+                    attributes[key] = expected[key]
+            doc["attributes"] = attributes
+            _atomic_write_json(zarr_v3_path, doc)
+        elif zattrs_path.exists():
+            try:
+                with open(zattrs_path, "r") as fh:
+                    attrs = json.load(fh)
+            except Exception as exc:
+                logging.warning("Could not read %s: %s", zattrs_path, exc)
+                continue
+
+            if not isinstance(attrs, dict):
+                attrs = {}
+
+            missing = [k for k in required_keys if k not in attrs]
+            if not missing:
+                continue
+
+            logging.warning(
+                "Repairing table attrs in %s (missing: %s)",
+                zattrs_path,
+                missing,
+            )
+            for key in required_keys:
+                if key not in attrs:
+                    attrs[key] = expected[key]
+            _atomic_write_json(zattrs_path, attrs)
+        else:
+            logging.debug(
+                "No zarr.json or .zattrs under %s; skipping attrs repair",
+                table_dir,
+            )
 
 
 def load_existing_spatial_data(zarr_path: Path, load_images: bool = False) -> sd.SpatialData:
