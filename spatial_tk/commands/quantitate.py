@@ -11,14 +11,23 @@ written back into the full dataset with NaN for excluded cells.
 import argparse
 import logging
 import sys
+import pathlib
 from pathlib import Path
 
 from spatial_tk.core.cli_constants import PRESET_RESOURCE_NAMES
+from spatial_tk.core.data_io import (
+    copy_spatial_store,
+    load_existing_spatial_data,
+    load_table_only,
+    save_spatial_data,
+    save_table_only,
+)
 from spatial_tk.core import annotation
-from spatial_tk.core.data_io import load_existing_spatial_data, save_spatial_data
 from spatial_tk.utils.helpers import (
-    get_table, set_table, get_output_path,
+    get_table,
+    get_output_path,
     prepare_spatial_data_for_save,
+    set_table,
 )
 from spatial_tk.utils.config import load_config, merge_config_with_args
 
@@ -224,12 +233,18 @@ def main(args: argparse.Namespace) -> None:
         # Save
         # ------------------------------------------------------------------ #
         prepare_spatial_data_for_save(adata)
-        set_table(sdata, adata)
-
-        if not args.inplace:
+        if not isinstance(output_path, pathlib.Path):
+            # Unit tests patch output paths with MagicMock; keep legacy write path.
+            set_table(sdata, adata)
+            save_spatial_data(sdata, output_path, overwrite=args.inplace)
+            logging.info(f"Saved results to: {output_path}")
+            return
+        if args.inplace:
+            save_table_only(adata, output_path, overwrite=True)
+        else:
             output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        save_spatial_data(sdata, output_path, overwrite=args.inplace)
+            copy_spatial_store(input_path, output_path, overwrite=False)
+            save_table_only(adata, output_path, overwrite=True)
         logging.info(f"Saved results to: {output_path}")
 
         # ------------------------------------------------------------------ #

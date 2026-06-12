@@ -7,6 +7,8 @@ concatenating multiple samples, and saving processed results.
 """
 
 import logging
+import shutil
+from numbers import Integral
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Tuple
 
@@ -92,6 +94,33 @@ def load_xenium_dataset(dataset_path: Path, sample_name: str) -> sd.SpatialData:
         raise
 
 
+def load_image_source(source_path: Path, sample_name: Optional[str] = None) -> sd.SpatialData:
+    """
+    Load a SpatialData object intended to provide image layers.
+
+    Args:
+        source_path: Path to raw Xenium directory or SpatialData .zarr store
+        sample_name: Optional sample identifier for logging
+
+    Returns:
+        SpatialData object with image elements
+    """
+    if not source_path.exists():
+        raise FileNotFoundError(f"Image source not found: {source_path}")
+
+    sample_label = sample_name or source_path.stem or source_path.name
+    if source_path.suffix == ".zarr":
+        sdata = load_existing_spatial_data(source_path, load_images=True)
+    else:
+        sdata = load_xenium_dataset(source_path, sample_name=sample_label)
+
+    if not hasattr(sdata, "images") or not sdata.images:
+        raise ValueError(f"No image layers found in image source: {source_path}")
+
+    logging.info("Loaded image source layers: %s", list(sdata.images.keys()))
+    return sdata
+
+
 def setup_squidpy_structure(sdata: sd.SpatialData, library_id: str) -> None:
     """
     Set up squidpy-compatible structure in AnnData.
@@ -137,21 +166,22 @@ def setup_squidpy_structure(sdata: sd.SpatialData, library_id: str) -> None:
         
         if image_key:
             try:
-                # Extract image data from SpatialData image element
+                # Avoid eager conversion of multiscale image trees into numpy arrays.
+                # Those payloads can be very large and/or produce object arrays.
                 image_element = sdata.images[image_key]
-                
-                # Convert to numpy array
-                if hasattr(image_element, 'values'):
-                    image_array = image_element.values
-                elif hasattr(image_element, 'data'):
-                    image_array = np.array(image_element.data)
+                if hasattr(image_element, "children") and image_element.children:
+                    logging.info(
+                        "    Skipping uns['spatial'][%s]['images'] for multiscale image '%s'",
+                        library_id,
+                        image_key,
+                    )
                 else:
-                    image_array = np.array(image_element)
-                
-                # Store in squidpy format
-                adata.uns['spatial'][library_id]['images'] = {'hires': image_array}
-                logging.info(f"    Added image to uns['spatial'][{library_id}]['images']")
-                
+                    logging.info(
+                        "    Image '%s' detected for %s; not copying to uns['spatial']['images']",
+                        image_key,
+                        library_id,
+                    )
+
                 # Try to extract scale factors from coordinate transformations
                 # For now, use default scale factor of 1.0
                 # TODO: Extract actual scale factors from SpatialData transformations
@@ -159,9 +189,8 @@ def setup_squidpy_structure(sdata: sd.SpatialData, library_id: str) -> None:
                     'tissue_hires_scalef': 1.0,
                     'spot_diameter_fullres': 1.0
                 }
-                
             except Exception as e:
-                logging.warning(f"    Failed to extract image for {library_id}: {e}")
+                logging.warning(f"    Failed to inspect image for {library_id}: {e}")
     
     # Ensure spatial coordinates are in obsm['spatial']
     # Check if coordinates already exist (e.g., from Xenium loader)
@@ -289,6 +318,10 @@ def load_spatial_datasets(sample_df: pd.DataFrame, load_images: bool = True) -> 
             from spatial_tk.utils.helpers import get_table, set_table
             table = get_table(sdata)
             if table is not None:
+                if "spatial_tk" not in table.uns:
+                    table.uns["spatial_tk"] = {}
+                if not str(dataset_path).endswith(".zarr"):
+                    table.uns["spatial_tk"]["image_source"] = str(dataset_path)
                 set_table(sdata, table)
             
             spatial_data_list.append((sample_name, sdata))
@@ -730,7 +763,7 @@ def load_existing_spatial_data(zarr_path: Path, load_images: bool = False) -> sd
         raise
 
 
-def load_table_only(zarr_path: Path) -> ad.AnnData:
+def load_table_only(zarr_path: Path, table_key: Optional[str] = None) -> ad.AnnData:
     """
     Load only the AnnData table from a SpatialData .zarr file.
     
@@ -754,20 +787,17 @@ def load_table_only(zarr_path: Path) -> ad.AnnData:
         if not zarr_path.exists():
             raise FileNotFoundError(f"Zarr file not found: {zarr_path}")
         
-        # Try to find the table path
-        # SpatialData typically stores tables in tables/ subdirectory
-        table_paths = [
-            zarr_path / "tables" / "table",  # Most common path
-            zarr_path / "table",  # Alternative path
-        ]
-        
         # Check if tables directory exists and find table name
         tables_dir = zarr_path / "tables"
         if tables_dir.exists():
             # List available tables
             import os
             table_names = [d for d in os.listdir(tables_dir) if (tables_dir / d).is_dir()]
-            if table_names:
+            if table_key and table_key in table_names:
+                table_name = table_key
+                table_path = tables_dir / table_name
+                logging.info(f"  Found explicit table: tables/{table_name}")
+            elif table_names:
                 # Use first table found
                 table_name = table_names[0]
                 table_path = tables_dir / table_name
@@ -802,7 +832,10 @@ def load_table_only(zarr_path: Path) -> ad.AnnData:
             # Get table
             table = None
             if hasattr(sdata, 'tables') and len(sdata.tables) > 0:
-                table = list(sdata.tables.values())[0]
+                if table_key and table_key in sdata.tables:
+                    table = sdata.tables[table_key]
+                else:
+                    table = list(sdata.tables.values())[0]
             elif hasattr(sdata, 'table'):
                 table = sdata.table
             
@@ -823,7 +856,28 @@ def load_table_only(zarr_path: Path) -> ad.AnnData:
         raise
 
 
-def save_table_only(adata: ad.AnnData, zarr_path: Path, overwrite: bool = False) -> None:
+def copy_spatial_store(src_path: Path, dst_path: Path, overwrite: bool = False) -> None:
+    """
+    Copy an existing SpatialData .zarr directory without materializing arrays.
+    """
+    if not src_path.exists():
+        raise FileNotFoundError(f"Source zarr not found: {src_path}")
+    if src_path.resolve() == dst_path.resolve():
+        return
+    if dst_path.exists():
+        if not overwrite:
+            raise FileExistsError(f"Destination zarr exists: {dst_path}")
+        shutil.rmtree(dst_path)
+    dst_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src_path, dst_path)
+
+
+def save_table_only(
+    adata: ad.AnnData,
+    zarr_path: Path,
+    overwrite: bool = False,
+    table_key: Optional[str] = None,
+) -> None:
     """
     Save AnnData table directly to a SpatialData .zarr file without loading other elements.
     
@@ -848,7 +902,7 @@ def save_table_only(adata: ad.AnnData, zarr_path: Path, overwrite: bool = False)
         
         # Determine table path
         tables_dir = zarr_path / "tables"
-        table_name = "table"  # Default table name
+        table_name = table_key or "table"  # Default table name
         
         # Check if tables directory exists
         if tables_dir.exists():
@@ -856,7 +910,10 @@ def save_table_only(adata: ad.AnnData, zarr_path: Path, overwrite: bool = False)
             import os
             if os.path.exists(tables_dir):
                 existing_tables = [d for d in os.listdir(tables_dir) if (tables_dir / d).is_dir()]
-                if existing_tables:
+                if table_key and table_key in existing_tables:
+                    table_name = table_key
+                    logging.info(f"  Using explicit table: tables/{table_name}")
+                elif existing_tables and not table_key:
                     table_name = existing_tables[0]  # Use existing table name
                     logging.info(f"  Using existing table: tables/{table_name}")
         else:

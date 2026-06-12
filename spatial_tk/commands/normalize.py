@@ -9,12 +9,18 @@ import sys
 from pathlib import Path
 
 from spatial_tk.core.data_io import (
+    copy_spatial_store,
     load_existing_spatial_data,
-    save_spatial_data,
     load_table_only,
+    save_spatial_data,
     save_table_only,
 )
-from spatial_tk.utils.helpers import get_table, set_table, get_output_path, prepare_spatial_data_for_save
+from spatial_tk.utils.helpers import (
+    get_output_path,
+    get_table,
+    prepare_spatial_data_for_save,
+    set_table,
+)
 from spatial_tk.utils.config import load_config, merge_config_with_args
 
 
@@ -111,14 +117,7 @@ def main(args: argparse.Namespace) -> None:
     try:
         from spatial_tk.core import plotting, preprocessing
 
-        sdata = None
-        if args.inplace:
-            # Load SpatialData but skip images
-            sdata = load_existing_spatial_data(input_path, load_images=False)
-            adata = get_table(sdata)
-        else:
-            # Load table only for processing, will reload SpatialData for saving
-            adata = load_table_only(input_path)
+        adata = load_table_only(input_path)
         
         if adata is None:
             raise ValueError("No expression table found in spatial data")
@@ -142,17 +141,13 @@ def main(args: argparse.Namespace) -> None:
         
         # Save results
         if args.inplace:
-            # Persist through SpatialData writer to preserve table metadata/schema.
-            set_table(sdata, adata)
             logging.info(f"Saving results in place: {output_path}")
-            save_spatial_data(sdata, output_path, overwrite=True)
+            save_table_only(adata, output_path, overwrite=True)
         else:
-            # Reload SpatialData to attach updated table before writing a new output store.
-            sdata = load_existing_spatial_data(input_path, load_images=False)
-            set_table(sdata, adata)
+            copy_spatial_store(input_path, output_path, overwrite=False)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             logging.info(f"Saving results to: {output_path}")
-            save_spatial_data(sdata, output_path, overwrite=False)
+            save_table_only(adata, output_path, overwrite=True)
         
         # Generate plots if requested
         if args.save_plots:
