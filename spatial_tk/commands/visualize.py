@@ -11,7 +11,12 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
-from spatial_tk.core.data_io import load_existing_spatial_data, load_xenium_dataset, setup_squidpy_structure
+from spatial_tk.core.data_io import (
+    load_existing_spatial_data,
+    load_image_source,
+    load_xenium_dataset,
+    setup_squidpy_structure,
+)
 from spatial_tk.core.visualization import (
     compile_style_arrays,
     extract_image_overlay,
@@ -44,8 +49,25 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--title", default=None, help="Optional plot title override")
     parser.add_argument("--overlay-image", action="store_true", help="Overlay image in background if available")
     parser.add_argument("--image-layer", default=None, help="Image layer key from SpatialData.images")
+    parser.add_argument("--image-source", default=None, help="Optional path to raw Xenium directory or .zarr image source")
     parser.add_argument("--image-scale", type=int, default=None, help="Multiscale image pyramid level to render")
     parser.add_argument("--image-channel", default=None, help="Image channel name or index to render")
+    parser.add_argument(
+        "--image-transform",
+        choices=["scale_xy", "scale_uniform", "pixel"],
+        default=None,
+        help="Coordinate transform for aligning image pixels to spatial coordinates",
+    )
+    parser.add_argument(
+        "--image-channels",
+        default=None,
+        help="Comma-separated image channel indices for composite rendering",
+    )
+    parser.add_argument(
+        "--image-channel-colors",
+        default=None,
+        help="Comma-separated colors for image channel composite (e.g. '#264bff,#00ff33,#ff260d')",
+    )
     parser.add_argument("--image-alpha", type=float, default=None, help="Background image alpha")
     parser.add_argument("--overwrite", action="store_true", help="Allow overwriting output files")
     parser.add_argument("--config", help="Path to TOML configuration file (optional)")
@@ -132,20 +154,56 @@ def main(args: argparse.Namespace) -> None:
         image_alpha = float(args.image_alpha if args.image_alpha is not None else plot_spec.get("image_alpha", 0.5))
 
         background_image = None
+        image_sdata = sdata
         if args.overlay_image or plot_spec.get("background", False):
-            if hasattr(sdata, "images") and sdata.images:
+            image_source = args.image_source
+            if image_source is None:
+                image_source = (
+                    adata.uns.get("spatial_tk", {}).get("image_source")
+                    if hasattr(adata, "uns")
+                    else None
+                )
+            if image_source:
+                image_sdata = load_image_source(Path(image_source), sample_name=input_path.name)
+            if hasattr(image_sdata, "images") and image_sdata.images:
                 image_layer = args.image_layer or plot_spec.get("image_layer")
                 if not image_layer:
-                    image_layer = list(sdata.images.keys())[0]
+                    image_layer = list(image_sdata.images.keys())[0]
                 try:
                     image_scale = args.image_scale
                     if image_scale is None and "image_scale" in plot_spec:
                         image_scale = int(plot_spec["image_scale"])
                     image_channel = args.image_channel or plot_spec.get("image_channel")
+                    image_spec = spec.get("image", {})
+                    image_transform = (
+                        args.image_transform
+                        or image_spec.get("transform")
+                        or plot_spec.get("image_transform")
+                        or "scale_xy"
+                    )
+                    image_channels = (
+                        args.image_channels
+                        or image_spec.get("channels")
+                        or plot_spec.get("image_channels")
+                    )
+                    channel_colors = (
+                        args.image_channel_colors
+                        or image_spec.get("channel_colors")
+                        or plot_spec.get("image_channel_colors")
+                    )
+                    contrast_percentiles = image_spec.get(
+                        "contrast_percentiles",
+                        plot_spec.get("image_contrast_percentiles"),
+                    )
                     background_image = extract_image_overlay(
-                        sdata.images[image_layer],
+                        image_sdata.images[image_layer],
                         image_scale=image_scale,
                         image_channel=image_channel,
+                        coords=coords,
+                        image_transform=image_transform,
+                        image_channels=image_channels,
+                        channel_colors=channel_colors,
+                        contrast_percentiles=contrast_percentiles,
                     )
                 except Exception as exc:
                     logging.warning("Could not parse image layer '%s' for overlay: %s", image_layer, exc)
@@ -201,6 +259,10 @@ def main(args: argparse.Namespace) -> None:
                 "dpi": dpi,
                 "overlay_image": bool(args.overlay_image or plot_spec.get("background", False)),
                 "image_layer": args.image_layer or plot_spec.get("image_layer"),
+                "image_source": args.image_source,
+                "image_transform": args.image_transform or spec.get("image", {}).get("transform") or plot_spec.get("image_transform") or "scale_xy",
+                "image_channels": args.image_channels or spec.get("image", {}).get("channels") or plot_spec.get("image_channels"),
+                "image_channel_colors": args.image_channel_colors or spec.get("image", {}).get("channel_colors") or plot_spec.get("image_channel_colors"),
                 "image_alpha": image_alpha,
                 "random_state": args.random_state,
                 "n_rois": len(rois),

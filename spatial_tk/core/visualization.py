@@ -15,7 +15,7 @@ from typing import Any, Dict, Iterable, List, Optional
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.cm as cm
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, to_rgb
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -369,26 +369,160 @@ def _prepare_image_array(arr: np.ndarray, channel_index: Optional[int] = None) -
     return arr
 
 
+def _channel_axis(data_array: Any) -> Optional[int]:
+    """Return channel axis index if the DataArray has one."""
+    dims = list(getattr(data_array, "dims", ()))
+    return dims.index("c") if "c" in dims else None
+
+
+def _normalize_image_channel(arr: np.ndarray, percentiles: tuple[float, float]) -> np.ndarray:
+    """Robustly normalize one image channel to 0..1."""
+    arr = arr.astype(np.float32, copy=False)
+    lo, hi = np.percentile(arr, percentiles)
+    if hi <= lo:
+        lo, hi = float(np.nanmin(arr)), float(np.nanmax(arr))
+    if hi <= lo:
+        return np.zeros_like(arr, dtype=np.float32)
+    return np.clip((arr - lo) / (hi - lo), 0.0, 1.0)
+
+
+def _parse_channel_colors(channel_colors: Optional[Any]) -> List[tuple[float, float, float]]:
+    """Parse TOML/CLI image channel color definitions."""
+    if not channel_colors:
+        return []
+    if isinstance(channel_colors, str):
+        channel_colors = [c.strip() for c in channel_colors.split(",") if c.strip()]
+    if isinstance(channel_colors, dict):
+        ordered_items = sorted(channel_colors.items(), key=lambda item: int(item[0]) if str(item[0]).isdigit() else str(item[0]))
+        channel_colors = [value for _, value in ordered_items]
+    return [to_rgb(str(color)) for color in channel_colors]
+
+
+def _parse_channel_indices(image_channels: Optional[Any], n_channels: int) -> List[int]:
+    """Parse channel indices for composite rendering."""
+    if image_channels is None:
+        return list(range(n_channels))
+    if isinstance(image_channels, str):
+        values = [v.strip() for v in image_channels.split(",") if v.strip()]
+    elif isinstance(image_channels, Iterable):
+        values = list(image_channels)
+    else:
+        values = [image_channels]
+    indices = [int(v) for v in values]
+    for idx in indices:
+        if idx < 0 or idx >= n_channels:
+            raise ValueError(f"image channel index {idx} outside 0..{n_channels - 1}")
+    return indices
+
+
+def _composite_image_array(
+    arr: np.ndarray,
+    data_array: Any,
+    image_channels: Optional[Any] = None,
+    channel_colors: Optional[Any] = None,
+    contrast_percentiles: Optional[Any] = None,
+) -> np.ndarray:
+    """Composite multiple image channels into an RGB image."""
+    colors = _parse_channel_colors(channel_colors)
+    percentiles = tuple(float(v) for v in (contrast_percentiles or (1.0, 99.8)))
+    if len(percentiles) != 2:
+        raise ValueError("image contrast_percentiles must have exactly two values")
+
+    c_axis = _channel_axis(data_array)
+    if c_axis is not None and arr.ndim >= 3:
+        arr = np.moveaxis(arr, c_axis, 0)
+    elif arr.ndim == 2:
+        arr = arr[None, :, :]
+    elif arr.ndim == 3 and arr.shape[0] in (1, 3, 4):
+        pass
+    elif arr.ndim == 3 and arr.shape[-1] in (1, 3, 4):
+        arr = np.moveaxis(arr, -1, 0)
+    else:
+        raise ValueError(f"Cannot infer channel axis for image shape {arr.shape}")
+
+    channel_indices = _parse_channel_indices(image_channels, n_channels=arr.shape[0])
+    if not colors:
+        colors = [to_rgb(c) for c in ("#264bff", "#00ff33", "#ff260d", "#ff00ff")]
+
+    rgb = np.zeros((*arr.shape[-2:], 3), dtype=np.float32)
+    for color_idx, channel_idx in enumerate(channel_indices):
+        color = np.asarray(colors[color_idx % len(colors)], dtype=np.float32)
+        normalized = _normalize_image_channel(arr[channel_idx], percentiles)
+        rgb += normalized[..., None] * color
+    return np.clip(rgb, 0.0, 1.0)
+
+
+def _infer_full_image_shape(original_shape: tuple[int, ...]) -> tuple[int, int]:
+    """Infer full-resolution image height/width from level 0 shape."""
+    if len(original_shape) >= 3 and original_shape[0] in (1, 3, 4):
+        return int(original_shape[-2]), int(original_shape[-1])
+    if len(original_shape) >= 2:
+        return int(original_shape[-2]), int(original_shape[-1])
+    raise ValueError(f"Cannot infer image shape from {original_shape}")
+
+
+def _image_extent_for_coords(
+    full_width: int,
+    full_height: int,
+    coords: Optional[np.ndarray] = None,
+    image_transform: str = "scale_xy",
+) -> tuple[float, float, float, float]:
+    """Return image extent in the same coordinate system used for cell dots."""
+    transform = (image_transform or "scale_xy").lower()
+    if coords is None or transform in {"pixel", "pixels", "none", "direct"}:
+        return (0.0, float(full_width), 0.0, float(full_height))
+
+    spatial_xmax = float(np.nanmax(coords[:, 0]))
+    spatial_ymax = float(np.nanmax(coords[:, 1]))
+    if spatial_xmax <= 0 or spatial_ymax <= 0:
+        return (0.0, float(full_width), 0.0, float(full_height))
+
+    if transform == "scale_xy":
+        return (0.0, spatial_xmax, 0.0, spatial_ymax)
+    if transform == "scale_uniform":
+        x_scale = full_width / spatial_xmax
+        y_scale = full_height / spatial_ymax
+        uniform_scale = (x_scale + y_scale) / 2.0
+        return (0.0, full_width / uniform_scale, 0.0, full_height / uniform_scale)
+    raise ValueError(f"Unsupported image_transform '{image_transform}'")
+
+
 def extract_image_overlay(
     image_element: Any,
     image_scale: Optional[int] = None,
     image_channel: Optional[Any] = None,
+    coords: Optional[np.ndarray] = None,
+    image_transform: str = "scale_xy",
+    image_channels: Optional[Any] = None,
+    channel_colors: Optional[Any] = None,
+    contrast_percentiles: Optional[Any] = None,
 ) -> ImageOverlay:
     """Extract a numeric image overlay from a SpatialData image element."""
     data_array, original_shape = _select_pyramid_data_array(image_element, image_scale=image_scale)
-    channel_index = _channel_index_from_data_array(data_array, image_channel=image_channel)
-    arr = _prepare_image_array(_as_numpy(data_array), channel_index=channel_index)
+    raw_arr = _as_numpy(data_array)
 
-    if len(original_shape) >= 3 and original_shape[0] in (1, 3, 4):
-        full_height, full_width = original_shape[-2], original_shape[-1]
+    if channel_colors or image_channels is not None:
+        arr = _composite_image_array(
+            raw_arr,
+            data_array=data_array,
+            image_channels=image_channels,
+            channel_colors=channel_colors,
+            contrast_percentiles=contrast_percentiles,
+        )
     elif len(original_shape) >= 2:
-        full_height, full_width = original_shape[-2], original_shape[-1]
-    else:
-        full_height, full_width = arr.shape[-2], arr.shape[-1]
+        channel_index = _channel_index_from_data_array(data_array, image_channel=image_channel)
+        arr = _prepare_image_array(raw_arr, channel_index=channel_index)
+
+    full_height, full_width = _infer_full_image_shape(original_shape)
 
     return ImageOverlay(
         data=arr,
-        extent=(0.0, float(full_width), 0.0, float(full_height)),
+        extent=_image_extent_for_coords(
+            full_width=full_width,
+            full_height=full_height,
+            coords=coords,
+            image_transform=image_transform,
+        ),
     )
 
 
