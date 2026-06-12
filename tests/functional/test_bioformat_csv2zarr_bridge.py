@@ -244,10 +244,13 @@ def test_batch_manifest_converts_three_oirs_to_bridges_and_zarrs():
                 "input_path": str(oir_path),
                 "bridge_path": str(batch_dir / f"bridge_{idx}"),
                 "zarr_path": str(batch_dir / f"sample_{idx}.zarr"),
+                "extract_path": str(batch_dir / f"extract_{idx}"),
             }
         )
     with manifest_path.open("w", encoding="utf-8", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=["input_path", "bridge_path", "zarr_path"])
+        writer = csv.DictWriter(
+            fh, fieldnames=["input_path", "bridge_path", "zarr_path", "extract_path"]
+        )
         writer.writeheader()
         writer.writerows(rows)
 
@@ -324,3 +327,28 @@ def test_batch_manifest_converts_three_oirs_to_bridges_and_zarrs():
             env=base_env,
         )
         assert read_result.returncode == 0, read_result.stderr
+
+    extract_result = _run(
+        [
+            *analysis_cmd,
+            "image",
+            "extract",
+            "--batch-csv",
+            str(manifest_path),
+            "--image-key",
+            "bioformat_image",
+            "--labels-key",
+            "test_labels",
+            "--chip-size",
+            "64",
+            "64",
+            "--include-mask-channel",
+        ],
+        env=base_env,
+    )
+    assert extract_result.returncode == 0, extract_result.stderr
+
+    for row in rows:
+        extract_dir = Path(row["extract_path"])
+        assert (extract_dir / "chips.npz").exists(), f"missing chips under {extract_dir}"
+        assert (extract_dir / "chip_montage.png").exists(), f"missing montage under {extract_dir}"

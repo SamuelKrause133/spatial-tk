@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from spatial_tk.utils.batch_csv import read_batch_manifest, resolve_manifest_path
 from spatial_tk.utils.config import load_config, merge_config_with_args
 from spatial_tk.utils.helpers import prepare_spatial_data_for_save, setup_logging
 
@@ -32,7 +33,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--batch-csv",
         required=False,
-        help="CSV with input_path, bridge_path, zarr_path columns for batch conversion.",
+        help="CSV with bridge_path and zarr_path columns (other columns allowed) for batch conversion.",
     )
     parser.add_argument("--table-key", default=None, help="Override table key")
     parser.add_argument("--image-key", default=None, help="Override image key")
@@ -60,25 +61,6 @@ def _resolve(base: Path, value: str | None, label: str) -> Path:
     if not path.exists():
         raise FileNotFoundError(f"{label} not found: {path}")
     return path
-
-
-def _resolve_manifest_path(base: Path, value: Any) -> Path:
-    path = Path(str(value)).expanduser()
-    if not path.is_absolute():
-        path = base / path
-    return path.resolve()
-
-
-def _read_batch_manifest(path: Path) -> tuple[pd.DataFrame, Path]:
-    manifest = Path(path).expanduser().resolve()
-    df = pd.read_csv(manifest)
-    required = {"input_path", "bridge_path", "zarr_path"}
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"batch CSV missing required columns: {sorted(missing)}")
-    if df.empty:
-        raise ValueError("batch CSV must contain at least one row")
-    return df, manifest.parent
 
 
 def _meta_section(meta: dict[str, Any], name: str) -> dict[str, Any]:
@@ -290,10 +272,10 @@ def main(args: argparse.Namespace) -> None:
     try:
         batch_csv = getattr(args, "batch_csv", None)
         if batch_csv:
-            manifest, base = _read_batch_manifest(Path(batch_csv))
-            for idx, row in manifest.iterrows():
-                bridge_path = _resolve_manifest_path(base, row["bridge_path"])
-                zarr_path = _resolve_manifest_path(base, row["zarr_path"])
+            rows, base = read_batch_manifest(Path(batch_csv), required={"bridge_path", "zarr_path"})
+            for idx, row in enumerate(rows):
+                bridge_path = resolve_manifest_path(base, row["bridge_path"])
+                zarr_path = resolve_manifest_path(base, row["zarr_path"])
                 metadata_json = bridge_path / "metadata.json"
                 logger.info("Processing batch row %s: %s -> %s", idx, bridge_path, zarr_path)
                 _convert_one(args, metadata_json, zarr_path)

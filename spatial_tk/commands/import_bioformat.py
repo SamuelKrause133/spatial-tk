@@ -17,6 +17,7 @@ from typing import Any, List
 
 import numpy as np
 
+from spatial_tk.utils.batch_csv import read_batch_manifest, resolve_manifest_path
 from spatial_tk.utils.config import load_config, merge_config_with_args
 from spatial_tk.utils.helpers import setup_logging
 
@@ -35,7 +36,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--batch-csv",
         required=False,
-        help="CSV with input_path, bridge_path, zarr_path columns for batch bridge export.",
+        help="CSV with input_path and bridge_path columns (other columns allowed) for batch bridge export.",
     )
     parser.add_argument(
         "--export-dir",
@@ -121,27 +122,6 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 def _dtype(name: str) -> type:
     return np.float32 if name == "float32" else np.float64
-
-
-def _resolve_manifest_path(base: Path, value: Any) -> Path:
-    path = Path(str(value)).expanduser()
-    if not path.is_absolute():
-        path = base / path
-    return path.resolve()
-
-
-def _read_batch_manifest(path: Path) -> tuple[Any, Path]:
-    import pandas as pd
-
-    manifest = Path(path).expanduser().resolve()
-    df = pd.read_csv(manifest)
-    required = {"input_path", "bridge_path", "zarr_path"}
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"batch CSV missing required columns: {sorted(missing)}")
-    if df.empty:
-        raise ValueError("batch CSV must contain at least one row")
-    return df, manifest.parent
 
 
 def _read_tiff(path: Path, dt: type) -> np.ndarray:
@@ -455,10 +435,12 @@ def main(args: argparse.Namespace) -> None:
         batch_csv = getattr(args, "batch_csv", None)
         try:
             if batch_csv:
-                manifest, base = _read_batch_manifest(Path(batch_csv))
-                for idx, row in manifest.iterrows():
-                    input_path = _resolve_manifest_path(base, row["input_path"])
-                    bridge_path = _resolve_manifest_path(base, row["bridge_path"])
+                rows, base = read_batch_manifest(
+                    Path(batch_csv), required={"input_path", "bridge_path"}
+                )
+                for idx, row in enumerate(rows):
+                    input_path = resolve_manifest_path(base, row["input_path"])
+                    bridge_path = resolve_manifest_path(base, row["bridge_path"])
                     logger.info("Processing batch row %s: %s -> %s", idx, input_path, bridge_path)
                     _run_one(args, input_path, bridge_path)
                 return

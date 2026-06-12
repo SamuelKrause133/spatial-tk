@@ -191,3 +191,74 @@ def test_csv2zarr_batch_writes_multiple_spatialdata_zarrs(tmp_path):
         assert "polygons" in sdata.shapes
         assert "table" in sdata.tables
 
+
+def test_csv2zarr_batch_without_input_path_column(tmp_path):
+    """csv2zarr batch mode only requires bridge_path and zarr_path."""
+    pytest.importorskip("spatialdata")
+    pytest.importorskip("geopandas")
+
+    import spatialdata as sd
+    from spatial_tk.commands.csv2zarr import main
+
+    bridge = _write_bundle(tmp_path, "bridge_only")
+    out_zarr = tmp_path / "from_bridge_only.zarr"
+    batch_csv = tmp_path / "batch.csv"
+    pd.DataFrame([{"bridge_path": str(bridge), "zarr_path": str(out_zarr)}]).to_csv(batch_csv, index=False)
+
+    main(
+        argparse.Namespace(
+            table_csv=None,
+            metadata_json=None,
+            output=None,
+            batch_csv=str(batch_csv),
+            table_key=None,
+            image_key=None,
+            labels_key=None,
+            shapes_key=None,
+            coord_system=None,
+            config=None,
+        )
+    )
+
+    assert out_zarr.exists()
+    sdata = sd.read_zarr(out_zarr)
+    assert "image" in sdata.images
+
+
+def test_csv2zarr_batch_tolerates_extra_columns(tmp_path):
+    pytest.importorskip("spatialdata")
+    pytest.importorskip("geopandas")
+
+    from spatial_tk.commands.csv2zarr import main
+
+    bridge = _write_bundle(tmp_path, "bridge_extra")
+    out_zarr = tmp_path / "out_extra.zarr"
+    batch_csv = tmp_path / "batch.csv"
+    pd.DataFrame(
+        [
+            {
+                "input_path": "ignored.tif",
+                "bridge_path": str(bridge),
+                "zarr_path": str(out_zarr),
+                "extract_path": "ignored_chips",
+                "notes": "hello",
+            }
+        ]
+    ).to_csv(batch_csv, index=False)
+
+    main(
+        argparse.Namespace(
+            table_csv=None,
+            metadata_json=None,
+            output=None,
+            batch_csv=str(batch_csv),
+            table_key=None,
+            image_key=None,
+            labels_key=None,
+            shapes_key=None,
+            coord_system=None,
+            config=None,
+        )
+    )
+    assert out_zarr.exists()
+

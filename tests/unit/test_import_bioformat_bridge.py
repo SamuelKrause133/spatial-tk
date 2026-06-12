@@ -7,7 +7,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pytest
 
 
 def _write_bundle(tmp_path: Path, name: str = "bridge") -> Path:
@@ -55,32 +54,3 @@ def test_import_bioformat_export_bundle_contract(tmp_path):
     assert metadata["labels"]["preview_png"] == "segmentation_mask.png"
     assert metadata["shapes"]["path"] == "polygons.geojson"
     assert metadata["table"]["feature_columns"]
-
-
-def test_read_batch_manifest_valid(tmp_path):
-    from spatial_tk.commands.import_bioformat import _read_batch_manifest
-
-    manifest = tmp_path / "batch.csv"
-    manifest.write_text("input_path,bridge_path,zarr_path\nsample.oir,out_bridge,out.zarr\n")
-    df, base = _read_batch_manifest(manifest)
-    assert base == manifest.parent.resolve()
-    assert len(df) == 1
-    assert set(df.columns) >= {"input_path", "bridge_path", "zarr_path"}
-
-
-def test_read_batch_manifest_missing_required_columns(tmp_path):
-    from spatial_tk.commands.import_bioformat import _read_batch_manifest
-
-    manifest = tmp_path / "bad.csv"
-    manifest.write_text("input_path,bridge_path\na.oir,bridge1\n")
-    with pytest.raises(ValueError, match="missing required columns"):
-        _read_batch_manifest(manifest)
-
-
-def test_read_batch_manifest_empty_rows(tmp_path):
-    from spatial_tk.commands.import_bioformat import _read_batch_manifest
-
-    manifest = tmp_path / "empty.csv"
-    manifest.write_text("input_path,bridge_path,zarr_path\n")
-    with pytest.raises(ValueError, match="at least one row"):
-        _read_batch_manifest(manifest)
