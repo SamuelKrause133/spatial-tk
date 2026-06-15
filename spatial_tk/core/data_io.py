@@ -425,7 +425,7 @@ def concatenate_spatial_data(
                         logging.info(f"  Preserved uns['spatial'][{sample_name}] structure")
             
             # Add sample names - extract from region key
-            # spatialdata.concatenate adds element prefixes (e.g., "cell_circles-Drexel-Pos")
+            # spatialdata.concatenate adds element prefixes (e.g., "cell_circles-sample1")
             # so we need to extract just the sample name part
             if "region" in table.obs.columns:
                 # Try to extract sample name from region

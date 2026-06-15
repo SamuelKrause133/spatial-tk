@@ -79,7 +79,7 @@ def test_prepare_spatial_data_converts_other_categoricals(mock_adata):
     # Add some categorical columns including custom metadata
     mock_adata.obs['sample'] = pd.Categorical(['sample1'] * 50 + ['sample2'] * 50)
     mock_adata.obs['status'] = pd.Categorical(['HIV'] * 50 + ['NEG'] * 50)
-    mock_adata.obs['location'] = pd.Categorical(['Drexel'] * 50 + ['OSU'] * 50)
+    mock_adata.obs['location'] = pd.Categorical(['site1'] * 50 + ['site2'] * 50)
     
     # Run prepare function
     prepare_spatial_data_for_save(mock_adata)

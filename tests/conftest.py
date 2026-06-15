@@ -95,7 +95,7 @@ def _materialize_fast_roi_fixtures():
 
     full_lookup = {row["sample"]: row for _, row in full_df.iterrows()}
 
-    # Group missing ROIs by their parent sample prefix (e.g. "Drexel-Neg_roi_03" -> "Drexel-Neg").
+    # Group missing ROIs by their parent sample prefix (e.g. "sample2_roi_03" -> "sample2").
     parent_samples: dict[str, dict] = {}
     for _, roi_row in missing.iterrows():
         roi_sample = str(roi_row["sample"])
@@ -206,7 +206,7 @@ def mock_adata():
     obs = pd.DataFrame({
         'sample': np.random.choice(['sample1', 'sample2'], n_obs),
         'status': np.random.choice(['HIV', 'NEG'], n_obs),
-        'location': np.random.choice(['Drexel', 'OSU'], n_obs)
+        'location': np.random.choice(['site1', 'site2'], n_obs)
     })
     obs.index = [f'cell_{i}' for i in range(n_obs)]
     

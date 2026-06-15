@@ -202,8 +202,8 @@ spatial-tk concat --input samples.csv --output merged.zarr --downsample 0.1
 **CSV Format:**
 ```csv
 sample,path,status,location
-sample1,/path/to/sample1.zarr,HIV,Drexel
-sample2,/path/to/sample2.zarr,NEG,OSU
+sample1,/path/to/sample1.zarr,HIV,site1
+sample2,/path/to/sample2.zarr,NEG,site2
 ```
 
 ### `spatial-tk normalize`

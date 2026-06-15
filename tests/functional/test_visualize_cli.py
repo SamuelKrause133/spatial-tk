@@ -23,7 +23,7 @@ default_marker = "o"
 default_size = 4
 
 [[rules]]
-where = "sample == 'Drexel-Pos'"
+where = "sample == 'sample1'"
 color = "#d73027"
 """
     )

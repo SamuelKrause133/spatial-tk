@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `--mode` with `kmeans` and `hdbscan` options for alternative clustering backends.
   - Added HDBSCAN options (`hdbscan_min_cluster_size`, `hdbscan_min_samples`, `hdbscan_cluster_selection_epsilon`, `hdbscan_metric`, `hdbscan_allow_single_cluster`) and mode-specific result fields in `uns`.
   - Added new core module `spatial_tk/core/spatial_clustering.py` for composition construction, k-means sweep, silhouette/inertia scoring, and uns result schema.
+- **Visualization subcommand**:
+  - Added `spatial-tk visualize` to render full-slide or ROI spatial point plots with rule-based styling from a supplemental TOML spec.
+  - Added support for manual ROIs (`--roi`), ROI CSV input (`--roi-file`), and random ROI generation (`--random-rois`, `--roi-width`, `--roi-height`).
+  - Added optional point subsampling (`--max-points`), figure overrides (`--figsize`, `--dpi`, `--title`), and config-file integration via `[visualize]`.
+  - Added background image overlay from `SpatialData.images` or an external source (`--overlay-image`, `--image-source`, `--image-layer`, multiscale/channel controls).
+  - Added output artifacts: PNG plot(s), `rois.csv` metadata for multi-ROI runs, and `visualize.resolved.json` with merged CLI/spec settings.
+  - Added new core module `spatial_tk/core/visualization.py` for ROI resolution, style compilation (direct `where` rules, categorical mapping, continuous colormaps), multiscale image extraction/alignment, and matplotlib rendering.
+  - Added `load_image_source()` in `spatial_tk/core/data_io.py` to load image layers from raw Xenium directories or `.zarr` stores.
+  - Added `copy_spatial_store()` in `spatial_tk/core/data_io.py` for filesystem-level `.zarr` copying without materializing arrays.
+  - Added unit tests `tests/unit/test_visualization.py` and `tests/unit/test_visualize_command.py`.
+  - Added functional smoke test `tests/functional/test_visualize_cli.py`.
 
 ### Changed
 - **Functional test fixture routing**:
@@ -44,9 +55,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI and docs**:
   - Registered `spatial_neighbors` in `spatial_tk/cli.py`.
   - Registered `spatial_cluster` in `spatial_tk/cli.py`.
+  - Registered `visualize` in `spatial_tk/cli.py`.
   - Added `[spatial_neighbors]` section to `example_config.toml`.
   - Added `[spatial_cluster]` section to `example_config.toml`.
-  - Updated `README.md` with command usage and examples.
+  - Updated `README.md` with command usage and examples for `spatial_neighbors`, `spatial_cluster`, and `visualize`.
+- **Table-only I/O for analysis commands**:
+  - Extended `load_table_only()` and `save_table_only()` with optional `table_key` selection.
+  - Updated `assign`, `cluster`, `normalize`, `quantitate`, `spatial_neighbors`, and `spatial_cluster` to load/save only the AnnData table.
+  - Non-inplace writes now use `copy_spatial_store()` followed by `save_table_only()` to avoid reloading images and shapes.
+  - `load_spatial_datasets()` now records `adata.uns["spatial_tk"]["image_source"]` for raw Xenium inputs to support later image overlay in visualize.
+  - `setup_squidpy_structure()` no longer eagerly converts multiscale image trees into numpy arrays.
 - **Table selection utilities**:
   - Updated `get_table()` and `set_table()` in `spatial_tk/utils/helpers.py` to support optional `table_key` selection.
 - **End-to-end pipeline test**:

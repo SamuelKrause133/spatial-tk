@@ -1,5 +1,5 @@
 sample,path,status,location
-Drexel-Pos,/deepdata/share/hope-lab/xenium_datasets/output-XETG00217__0041105__HIV-NEG-NS14-916__20251002__151302.zarr,HIV,Drexel
-Drexel-Neg,/deepdata/share/hope-lab/xenium_datasets/output-XETG00217__0041105__HIV-POS-DS14-6872__20251002__151303.zarr,NEG,Drexel
-OSU-Pos,/deepdata/share/hope-lab/xenium_datasets/20251022__150913__jenna_rescan_2025-10-22/output-XETG00217__0067798__s524206__20251022__150941.zarr,HIV,OSU
-OSU-Neg,/deepdata/share/hope-lab/xenium_datasets/20251022__150913__jenna_rescan_2025-10-22/output-XETG00217__0067798__s164820__20251022__150941.zarr,NEG,OSU
+sample1,/deepdata/share/hope-lab/xenium_datasets/output-XETG00217__0041105__HIV-NEG-NS14-916__20251002__151302.zarr,HIV,site1
+sample2,/deepdata/share/hope-lab/xenium_datasets/output-XETG00217__0041105__HIV-POS-DS14-6872__20251002__151303.zarr,NEG,site1
+sample3,/deepdata/share/hope-lab/xenium_datasets/20251022__150913__jenna_rescan_2025-10-22/output-XETG00217__0067798__s524206__20251022__150941.zarr,HIV,site2
+sample4,/deepdata/share/hope-lab/xenium_datasets/20251022__150913__jenna_rescan_2025-10-22/output-XETG00217__0067798__s164820__20251022__150941.zarr,NEG,site2
