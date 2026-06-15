@@ -1,31 +1,60 @@
-.PHONY: help venv install install-dev build test test-unit test-functional test-coverage clean clean-all lint format create-test-data run
+.PHONY: help venv venv-image install install-dev build test test-unit test-functional test-functional-analysis test-bridge-functional test-coverage test-unit-image test-unit-analysis test-all-envs clean clean-all lint format create-test-data run
+
+# Default analysis env: ./venv. Optional image/JVM env: ./venv_image (see image.env.yaml).
+VENV_IMAGE_PY := ./venv_image/bin/python
+VENV_ANALYSIS_PY := ./venv/bin/python
+VENV_IMAGE_JAVA_HOME := $(CURDIR)/venv_image/lib/jvm
 
 # Default target
 help:
 	@echo "spatial-tk Makefile"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  make venv              - Create virtual environment with conda"
+	@echo "  make venv              - Create ./venv (analysis stack: conda py3.12 + requirements-analysis.txt)"
+	@echo "  make venv-image        - Create ./venv_image: conda (py3.10+JDK) then pip deps from requirements-image.txt"
 	@echo "  make install           - Install package in current environment"
 	@echo "  make install-dev       - Install package with dev dependencies"
 	@echo "  make build             - Build distribution packages"
-	@echo "  make test              - Run all tests using full external datasets"
-	@echo "  make test-unit         - Run only unit tests (fast)"
-	@echo "  make test-functional   - Run functional tests with ROI fixtures"
+	@echo "  make test              - Orchestrated tests (./venv + ./venv_image targets below)"
+	@echo "  make test-unit         - Run only unit tests (fast, current python)"
+	@echo "  make test-unit-analysis - Unit tests using ./venv"
+	@echo "  make test-unit-image    - Image CLI + image-side bridge unit tests using ./venv_image"
+	@echo "  make test-all-envs      - test-unit-analysis, test-unit-image, test-bridge-functional"
+	@echo "  make check-env-analysis - Print versions + validate imports (./venv)"
+	@echo "  make check-env-image    - Print versions + validate imports (./venv_image)"
+	@echo "  make test-functional    - Fast functional tests in ./venv (excludes functional_full)"
+	@echo "  make test-functional-analysis - Same as test-functional"
+	@echo "  make test-bridge-functional - OIR bridge functional tests in ./venv (needs ./venv_image + fixture)"
 	@echo "  make test-coverage     - Run tests with coverage report"
-	@echo "  make create-test-data  - Generate subsampled test data"
+	@echo "  make create-test-data  - Generate subsampled test data (uses ./venv if present)"
 	@echo "  make clean-test        - Clean up test temporary files"
 	@echo "  make lint              - Run linting checks"
 	@echo "  make format            - Format code with black"
 	@echo "  make clean             - Remove build artifacts and caches"
-	@echo "  make clean-all         - Remove build artifacts, caches, and venv"
+	@echo "  make clean-all         - Remove build artifacts, caches, and conda prefixes (venv, venv_image)"
 	@echo "  make run ROOT=/path    - Run full pipeline (6 steps) using config.toml in ROOT directory"
 
-# Create virtual environment
+# Analysis stack — default environment at ./venv (Python 3.12 + requirements-analysis.txt)
 venv:
-	conda create -p ./venv python=3.12 -y
-	./venv/bin/pip install --upgrade pip
-	./venv/bin/pip install -e ".[dev]"
+	conda create -p ./venv python=3.12 pip setuptools wheel -y
+	$(VENV_ANALYSIS_PY) -m pip install --upgrade pip wheel packaging "setuptools<81"
+	$(VENV_ANALYSIS_PY) -m pip install -r requirements-analysis.txt
+	# Install package metadata + console scripts without re-resolving deps.
+	$(VENV_ANALYSIS_PY) -m pip install -e . --no-deps
+
+# Microscopy / JVM / Cellpose (same workflow as main: minimal conda + pip; avoids conda-forge YAML brittleness)
+# After install: set JAVA_HOME to the JDK inside the prefix (javabridge needs javac + runtime), e.g.
+#   export JAVA_HOME=$(pwd)/venv_image/lib/jvm
+#   export PATH="$$JAVA_HOME/bin:$$PATH"
+venv-image:
+	conda create -p ./venv_image python=3.10 openjdk=17 pip setuptools wheel -y
+	$(VENV_IMAGE_PY) -m pip install --upgrade pip wheel packaging "setuptools<81"
+	$(VENV_IMAGE_PY) -m pip install numpy==1.26.4 scipy==1.11.4
+	JAVA_HOME=$(VENV_IMAGE_JAVA_HOME) PATH="$(VENV_IMAGE_JAVA_HOME)/bin:$$PATH" $(VENV_IMAGE_PY) -m pip install --no-build-isolation python-javabridge==4.0.3
+	JAVA_HOME=$(VENV_IMAGE_JAVA_HOME) PATH="$(VENV_IMAGE_JAVA_HOME)/bin:$$PATH" $(VENV_IMAGE_PY) -m pip install -r requirements-image.txt
+	# Install package metadata + console scripts without re-resolving deps.
+	# (Deps are pinned by requirements-image.txt + the numpy/scipy bootstrap above.)
+	$(VENV_IMAGE_PY) -m pip install -e . --no-deps
 
 # Install package
 install:
@@ -33,7 +62,7 @@ install:
 
 # Install with development dependencies
 install-dev:
-	pip install -e ".[dev]"
+	pip install -e ".[analysis,dev]"
 
 # Build distribution packages
 build:
@@ -41,17 +70,35 @@ build:
 	python -m build
 	@echo "Distribution packages created in dist/"
 
-# Run all tests (with custom temp directory on larger partition)
-test:
-	SPATIAL_TK_TEST_TIER=full pytest -v --basetemp=.pytest_tmp
+# Orchestrated: default analysis env + image env + fast functional + full bridge (bridge skips if missing fixture/envs)
+test: test-all-envs test-functional-analysis
 
 # Run only unit tests
 test-unit:
 	pytest tests/unit/ -v --basetemp=.pytest_tmp
 
-# Run only functional tests
-test-functional:
-	SPATIAL_TK_TEST_TIER=fast pytest tests/functional/ -v --basetemp=.pytest_tmp
+test-unit-analysis:
+	@$(VENV_ANALYSIS_PY) -m pytest tests/unit/ -v --basetemp=.pytest_tmp
+
+test-unit-image:
+	@$(VENV_IMAGE_PY) -m pytest tests/unit/test_lazy_cli.py tests/unit/test_import_bioformat_bridge.py -v --basetemp=.pytest_tmp
+
+check-env-analysis:
+	@$(VENV_ANALYSIS_PY) scripts/validate_env.py analysis
+
+check-env-image:
+	@JAVA_HOME=$(VENV_IMAGE_JAVA_HOME) PATH="$(VENV_IMAGE_JAVA_HOME)/bin:$$PATH" $(VENV_IMAGE_PY) scripts/validate_env.py image
+
+test-all-envs: test-unit-analysis test-unit-image test-bridge-functional
+
+# Fast functional tests (ROI fixtures); excludes OIR bridge tests marked functional_full
+test-functional: test-functional-analysis
+
+test-functional-analysis:
+	@SPATIAL_TK_TEST_TIER=fast $(VENV_ANALYSIS_PY) -m pytest tests/functional/ -v --basetemp=.pytest_tmp -m "not functional_full"
+
+test-bridge-functional:
+	@SPATIAL_TK_TEST_TIER=full $(VENV_ANALYSIS_PY) -m pytest tests/functional/test_bioformat_csv2zarr_bridge.py -v --basetemp=.pytest_tmp
 
 # Run tests with coverage
 test-coverage:
@@ -64,12 +111,19 @@ clean-test:
 	rm -rf .pytest_cache/
 	@echo "Cleaned test temporary files"
 
-# Create test data
+# Create test data (prefer project ./venv when present)
 create-test-data:
-	python scripts/create_test_data.py \
-		--input-csv example.csv \
-		--output-dir tests/test_data \
-		--n-cells 500
+	@if [ -x "$(VENV_ANALYSIS_PY)" ]; then \
+		$(VENV_ANALYSIS_PY) scripts/create_test_data.py \
+			--input-csv example.csv \
+			--output-dir tests/test_data \
+			--n-cells 500; \
+	else \
+		python scripts/create_test_data.py \
+			--input-csv example.csv \
+			--output-dir tests/test_data \
+			--n-cells 500; \
+	fi
 
 # Run linting
 lint:
@@ -97,14 +151,15 @@ clean:
 	find . -type f -name "*.pyo" -delete
 	@echo "Cleaned build artifacts and caches"
 
-# Clean everything including venv
+# Clean everything including venv prefixes
 clean-all: clean
 	rm -rf venv/
+	rm -rf venv_image/
 	@echo "Cleaned everything including venv"
 
 # Development workflow shortcuts
-dev-setup: venv install-dev create-test-data
-	@echo "Development environment ready!"
+dev-setup: venv create-test-data
+	@echo "Development environment ready! (activate ./venv)"
 
 # Quick test during development
 quick-test: test-unit

@@ -1,27 +1,11 @@
-# Xenium Spatial Clustering Tool Dependencies
-
-# Spatial data handling
-spatialdata
-squidpy
-
-# Core single-cell analysis
-scanpy
-anndata
-
-# Data manipulation
-pandas
-numpy
-
-# Cell type annotation with enrichment analysis
-decoupler
-
-# Visualization
-matplotlib
-seaborn
-
-# Scientific computing
-scipy
-
-# Graph algorithms for clustering
-igraph
-leidenalg
+# Legacy convenience entrypoint (deprecated).
+#
+# This project maintains two pinned dependency stacks:
+# - analysis: requirements-analysis.txt / `pip install -e ".[analysis]"`
+# - image:    requirements-image.txt   / `pip install -e ".[image]"`
+#
+# `requirements.txt` is kept only to avoid breaking existing workflows that do:
+#   pip install -r requirements.txt
+#
+# It now aliases the pinned analysis stack.
+-r requirements-analysis.txt

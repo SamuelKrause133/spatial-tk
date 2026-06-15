@@ -14,7 +14,7 @@ from spatial_tk.core.data_io import (
     concatenate_spatial_data,
     save_spatial_data
 )
-from spatial_tk.core.preprocessing import downsample_cells
+from spatial_tk.core.downsample import downsample_cells
 from spatial_tk.utils.helpers import get_table
 from spatial_tk.utils.config import load_config, merge_config_with_args
 

@@ -8,8 +8,8 @@ import logging
 import sys
 from pathlib import Path
 
-from spatial_tk.core.data_io import load_existing_spatial_data, save_spatial_data
 from spatial_tk.core import spatial_neighbors as spatial_neighbors_core
+from spatial_tk.core.data_io import load_existing_spatial_data, save_spatial_data
 from spatial_tk.utils.helpers import get_output_path, get_table, set_table, prepare_spatial_data_for_save
 from spatial_tk.utils.config import load_config, merge_config_with_args
 

@@ -5,6 +5,7 @@ Unit tests for preprocessing module.
 import pytest
 import numpy as np
 from spatial_tk.core import preprocessing
+from spatial_tk.core.downsample import downsample_cells
 
 
 def test_calculate_qc_metrics(mock_adata):
@@ -65,7 +66,7 @@ def test_downsample_cells(mock_adata):
     n_cells_original = mock_adata.n_obs
     fraction = 0.5
     
-    adata = preprocessing.downsample_cells(mock_adata, fraction)
+    adata = downsample_cells(mock_adata, fraction)
     
     # Check that approximately correct number of cells remain
     expected_cells = int(n_cells_original * fraction)
@@ -75,8 +76,8 @@ def test_downsample_cells(mock_adata):
 def test_downsample_invalid_fraction(mock_adata):
     """Test that invalid fractions raise errors."""
     with pytest.raises(ValueError):
-        preprocessing.downsample_cells(mock_adata, -0.1)
-    
+        downsample_cells(mock_adata, -0.1)
+
     with pytest.raises(ValueError):
-        preprocessing.downsample_cells(mock_adata, 1.5)
+        downsample_cells(mock_adata, 1.5)
 

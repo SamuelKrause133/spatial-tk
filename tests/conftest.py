@@ -10,8 +10,6 @@ import pytest
 from pathlib import Path
 import numpy as np
 import pandas as pd
-import anndata as ad
-import spatialdata as sd
 import shutil
 import gc
 
@@ -195,6 +193,8 @@ def test_markers_csv(test_data_dir):
 @pytest.fixture
 def mock_adata():
     """Create a mock AnnData object for unit tests."""
+    ad = pytest.importorskip("anndata")
+
     n_obs = 100
     n_vars = 300  # Increased to avoid scanpy QC issues with percent_top (needs >200)
     

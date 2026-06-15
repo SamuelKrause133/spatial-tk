@@ -12,9 +12,9 @@ import logging
 import sys
 from pathlib import Path
 
+from spatial_tk.core.cli_constants import ASSIGNMENT_STRATEGY_CHOICES
+from spatial_tk.core import annotation, plotting
 from spatial_tk.core.data_io import load_existing_spatial_data, save_spatial_data
-from spatial_tk.core import annotation
-from spatial_tk.core import plotting
 from spatial_tk.utils.helpers import (
     get_table, set_table, get_output_path,
     prepare_spatial_data_for_save,
@@ -67,7 +67,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--strategy",
         default="top_positive",
-        choices=list(annotation.STRATEGY_REGISTRY),
+        choices=list(ASSIGNMENT_STRATEGY_CHOICES),
         help=(
             "Assignment strategy. Default: 'top_positive' (highest positive "
             "enrichment stat per cluster; 'Unknown' if none)."

@@ -20,7 +20,13 @@ A comprehensive modular Python toolkit for Xenium spatial transcriptomics analys
 # Clone or navigate to the repository
 cd clustering-tools
 
-# Install in development mode (recommended)
+# Install the analysis stack (recommended for Xenium workflows)
+pip install -e ".[analysis]"
+
+# Or install the microscopy/image stack
+pip install -e ".[image]"
+
+# Core-only install (minimal; mainly for CLI help / lightweight tooling)
 pip install -e .
 
 # Or install normally
@@ -30,13 +36,52 @@ pip install .
 ### Dependencies
 
 The package requires Python ≥3.9 and includes dependencies for:
-- Spatial data handling (spatialdata, squidpy)
-- Single-cell analysis (scanpy, anndata)
-- Cell type annotation (decoupler)
-- Visualization (matplotlib, seaborn)
-- Clustering (igraph, leidenalg)
+- **Analysis stack** (`.[analysis]`): SpatialData + Scanpy/Squidpy (Xenium analysis commands)
+- **Image stack** (`.[image]`): Bio-Formats/JVM + Cellpose/Torch for flat microscopy export bundles
 
 See `pyproject.toml` for complete dependency list.
+
+### Recommended reproducible installs (two isolated envs)
+
+To avoid dependency solver conflicts between the analysis and image stacks, the recommended workflow is two separate conda prefixes created via Makefile:
+
+```bash
+make venv
+make venv-image
+```
+
+Then validate each environment:
+
+```bash
+make check-env-analysis
+make check-env-image
+```
+
+### Image-to-analysis bridge
+
+The image environment does not write SpatialData directly. Instead, it exports a
+flat bundle that the analysis environment converts to `.zarr`:
+
+```bash
+# image env: import, segment, quantify, polygonize, and export flat files
+spatial-tk image import-bioformat \
+  --input sample.oir \
+  --segment \
+  --export-dir sample_bridge
+
+# analysis env: assemble the bundle into SpatialData .zarr
+spatial-tk csv2zarr \
+  --metadata-json sample_bridge/metadata.json \
+  --output sample.zarr
+```
+
+The bridge bundle contains:
+
+- `image.npy`: CYX image array.
+- `labels.npy`: YX integer label mask.
+- `objects.csv`: one row per object with required columns `instance_id`, `region`, `centroid_x`, `centroid_y`, plus intensity feature columns such as `mean_ch0`, `sum_ch0`, and `max_ch0`.
+- `polygons.geojson`: polygon features whose `properties.instance_id` values match `objects.csv`.
+- `metadata.json`: file references and SpatialData keys (`table.key`, `image.key`, `labels.key`, `shapes.key`, `coordinate_system`, and `table.feature_columns`).
 
 ## Configuration Files
 
