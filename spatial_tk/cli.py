@@ -62,6 +62,9 @@ Examples:
   # Score enrichment with a custom marker list (all cells)
   spatial-tk quantitate --input clustered.zarr --inplace --markers markers.csv
 
+  # Render a full-slide spatial plot using a visualization spec
+  spatial-tk visualize --input clustered.zarr --output full_slide.png --spec viz.toml
+
   # Score only fibroblasts against a custom list, plus built-in PanglaoDB
   spatial-tk quantitate --input clustered.zarr --inplace \\
       --markers markers.csv --filter-obs "cell_type==Fibroblast" \\
@@ -108,6 +111,7 @@ Image / microscopy (optional deps — separate environment):
     _register_normalize(subparsers)
     _register_cluster(subparsers)
     _register_quantitate(subparsers)
+    _register_visualize(subparsers)
     _register_spatial_neighbors(subparsers)
     _register_spatial_cluster(subparsers)
     _register_csv2zarr(subparsers)
@@ -187,6 +191,29 @@ def _register_quantitate(subparsers: argparse._SubParsersAction) -> None:
     )
     quantitate.add_arguments(quantitate_parser)
     quantitate_parser.set_defaults(func=quantitate.main)
+
+
+def _register_visualize(subparsers: argparse._SubParsersAction) -> None:
+    try:
+        from spatial_tk.commands import visualize
+    except ImportError:
+        p = subparsers.add_parser(
+            "visualize",
+            help="Render full-slide or ROI spatial plots with rule-based styling",
+        )
+        p.set_defaults(func=_missing_analysis_subcommand("visualize"))
+        return
+
+    visualize_parser = subparsers.add_parser(
+        "visualize",
+        help="Render full-slide or ROI spatial plots with rule-based styling",
+        description=(
+            "Generate spatial point plots for full slides or ROI windows using "
+            "CLI settings and optional supplemental visualization spec rules."
+        ),
+    )
+    visualize.add_arguments(visualize_parser)
+    visualize_parser.set_defaults(func=visualize.main)
 
 
 def _register_spatial_neighbors(subparsers: argparse._SubParsersAction) -> None:

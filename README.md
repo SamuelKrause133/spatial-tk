@@ -135,6 +135,15 @@ groupby = "leiden_res0p5"
 method = "wilcoxon"
 n_genes = 100
 save_plots = false
+
+[visualize]
+input = "merged.zarr"
+output = "figures/"
+view = "roi"
+spec = "visualize.toml"
+random_rois = 4
+roi_width = 400
+roi_height = 400
 ```
 
 ### Config Key Naming
@@ -193,8 +202,8 @@ spatial-tk concat --input samples.csv --output merged.zarr --downsample 0.1
 **CSV Format:**
 ```csv
 sample,path,status,location
-sample1,/path/to/sample1.zarr,HIV,Drexel
-sample2,/path/to/sample2.zarr,NEG,OSU
+sample1,/path/to/sample1.zarr,HIV,site1
+sample2,/path/to/sample2.zarr,NEG,site2
 ```
 
 ### `spatial-tk normalize`
@@ -410,6 +419,68 @@ spatial-tk differential \
 - `--n-genes`: Number of top genes to save (default: 100)
 - `--save-plots`: Generate differential analysis plots
 - `--config`: Path to TOML configuration file (optional)
+
+### `spatial-tk visualize`
+
+Render full-slide or ROI spatial plots with rule-based point styling.
+
+```bash
+# Full slide render
+spatial-tk visualize --input data.zarr --output full_slide.png --spec visualize.toml
+
+# Render 4 random ROIs
+spatial-tk visualize --input data.zarr --output figures/ --view roi \
+  --random-rois 4 --roi-width 400 --roi-height 400 --spec visualize.toml
+
+# Render explicit ROI boxes
+spatial-tk visualize --input data.zarr --output figures/ --view roi \
+  --roi 0,0,500,500 --roi 600,300,1100,800 --spec visualize.toml
+```
+
+**Arguments:**
+- `--input`: Input `.zarr` file
+- `--output`: Output PNG path (single render) or output directory (multiple ROIs)
+- `--view`: `full` (default) or `roi`
+- `--roi`: Manual ROI bbox `xmin,ymin,xmax,ymax` (repeatable)
+- `--roi-file`: CSV of ROI bboxes (`xmin`, `ymin`, `xmax`, `ymax`, optional `name`)
+- `--random-rois`: Number of random ROIs to generate
+- `--roi-width`/`--roi-height`: Required for random ROI generation
+- `--spatial-key`: Coordinate key in `adata.obsm` (default: `spatial`)
+- `--spec`: Supplemental TOML visualization specification with style rules
+- `--overlay-image`: Overlay a `SpatialData.images` layer in the background
+- `--image-layer`: Optional image key to use for background overlay
+- `--config`: Path to TOML configuration file (optional)
+
+**Visualization spec example (`visualize.toml`):**
+```toml
+[plot]
+figsize = [8, 8]
+dpi = 300
+background = false
+
+[points]
+default_color = "#bdbdbd"
+default_marker = "o"
+default_size = 6
+
+[[rules]]
+where = "cell_type_res0p5 == 'Macrophage'"
+color = "#d73027"
+size = 10
+
+[[rules]]
+kind = "categorical"
+marker_by = "infection_status"
+values = { infected = "x", uninfected = "o" }
+
+[[rules]]
+kind = "continuous"
+color_by = "viral_load_score"
+cmap = "viridis"
+vmin = 0.0
+vmax = 3.0
+show_colorbar = true
+```
 
 ## Example Workflows
 
