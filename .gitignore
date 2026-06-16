@@ -111,6 +111,7 @@ env/
 venv/
 venv_image/
 venv_analysis/
+venv_jupyter/
 ENV/
 env.bak/
 venv.bak/
