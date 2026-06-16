@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Jupyter kernel environment (`venv_jupyter`)**:
+  - Added `make venv-jupyter` to create `./venv_jupyter` (Python 3.12, analysis stack + ipykernel/ipywidgets).
+  - Added `jupyter.env.yaml` minimal conda skeleton for the Jupyter prefix.
+  - Added `requirements-jupyter.txt` extending `requirements-analysis.txt` with `ipykernel` and `ipywidgets`.
+  - Registered the `spatial-tk` Jupyter kernel via `ipykernel install` (default: `--user`; optional `JUPYTER_KERNEL_INSTALL=sys-prefix` for prefix-local install).
+  - Added `make check-env-jupyter` validation target.
+  - Added `venv_jupyter/` to `make clean-all`.
+- **Makefile env creation**:
+  - Added `CONDA` parameter (default: `conda`) for `venv`, `venv-image`, and `venv-jupyter`; supports `mamba`, `micromamba`, or a full path to a conda-compatible CLI.
 - **ROI fixture generator script for tests**:
   - Added `tests/test_data/generate_roi_subsets.py` to generate ROI subset `.zarr` files from a single input `.zarr`.
   - Supports configurable ROI count, target cell ranges, coordinate system, overlap/distance constraints, and manifest output for test ingestion.

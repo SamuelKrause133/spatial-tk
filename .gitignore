@@ -110,6 +110,7 @@ celerybeat.pid
 env/
 venv/
 venv_image/
+venv_jupyter/
 venv_analysis/
 ENV/
 env.bak/

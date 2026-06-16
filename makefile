@@ -1,9 +1,23 @@
-.PHONY: help venv venv-image install install-dev build test test-unit test-functional test-functional-analysis test-bridge-functional test-coverage test-unit-image test-unit-analysis test-all-envs clean clean-all lint format create-test-data run
+.PHONY: help venv venv-image venv-jupyter install install-dev build test test-unit test-functional test-functional-analysis test-bridge-functional test-coverage test-unit-image test-unit-analysis test-all-envs check-env-jupyter clean clean-all lint format create-test-data run
 
 # Default analysis env: ./venv. Optional image/JVM env: ./venv_image (see image.env.yaml).
+# Jupyter kernel env: ./venv_jupyter (see jupyter.env.yaml).
+# Conda-compatible CLI for env creation: conda (default), mamba, micromamba, or a full path.
+CONDA ?= conda
 VENV_IMAGE_PY := ./venv_image/bin/python
 VENV_ANALYSIS_PY := ./venv/bin/python
+VENV_JUPYTER_PY := ./venv_jupyter/bin/python
 VENV_IMAGE_JAVA_HOME := $(CURDIR)/venv_image/lib/jvm
+
+# Jupyter kernel registration: user (~/.local/share/jupyter/kernels/) or sys-prefix (./venv_jupyter/share/jupyter/kernels/)
+JUPYTER_KERNEL_INSTALL ?= user
+ifeq ($(JUPYTER_KERNEL_INSTALL),sys-prefix)
+JUPYTER_KERNEL_INSTALL_FLAG := --sys-prefix
+else ifeq ($(JUPYTER_KERNEL_INSTALL),user)
+JUPYTER_KERNEL_INSTALL_FLAG := --user
+else
+$(error JUPYTER_KERNEL_INSTALL must be "user" or "sys-prefix", got "$(JUPYTER_KERNEL_INSTALL)")
+endif
 
 # Default target
 help:
@@ -12,6 +26,9 @@ help:
 	@echo "Available targets:"
 	@echo "  make venv              - Create ./venv (analysis stack: conda py3.12 + requirements-analysis.txt)"
 	@echo "  make venv-image        - Create ./venv_image: conda (py3.10+JDK) then pip deps from requirements-image.txt"
+	@echo "  make venv-jupyter      - Create ./venv_jupyter: analysis stack + ipykernel (spatial-tk Jupyter kernel)"
+	@echo "  venv targets accept:   CONDA=conda|mamba|micromamba|/path/to/conda (default: conda)"
+	@echo "                         JUPYTER_KERNEL_INSTALL=user (default) or sys-prefix (venv-jupyter only)"
 	@echo "  make install           - Install package in current environment"
 	@echo "  make install-dev       - Install package with dev dependencies"
 	@echo "  make build             - Build distribution packages"
@@ -22,6 +39,7 @@ help:
 	@echo "  make test-all-envs      - test-unit-analysis, test-unit-image, test-bridge-functional"
 	@echo "  make check-env-analysis - Print versions + validate imports (./venv)"
 	@echo "  make check-env-image    - Print versions + validate imports (./venv_image)"
+	@echo "  make check-env-jupyter  - Print versions + validate imports (./venv_jupyter)"
 	@echo "  make test-functional    - Fast functional tests in ./venv (excludes functional_full)"
 	@echo "  make test-functional-analysis - Same as test-functional"
 	@echo "  make test-bridge-functional - OIR bridge functional tests in ./venv (needs ./venv_image + fixture)"
@@ -31,12 +49,12 @@ help:
 	@echo "  make lint              - Run linting checks"
 	@echo "  make format            - Format code with black"
 	@echo "  make clean             - Remove build artifacts and caches"
-	@echo "  make clean-all         - Remove build artifacts, caches, and conda prefixes (venv, venv_image)"
+	@echo "  make clean-all         - Remove build artifacts, caches, and conda prefixes (venv, venv_image, venv_jupyter)"
 	@echo "  make run ROOT=/path    - Run full pipeline (6 steps) using config.toml in ROOT directory"
 
 # Analysis stack — default environment at ./venv (Python 3.12 + requirements-analysis.txt)
 venv:
-	conda create -p ./venv python=3.12 pip setuptools wheel -y
+	$(CONDA) create -p ./venv python=3.12 pip setuptools wheel -y
 	$(VENV_ANALYSIS_PY) -m pip install --upgrade pip wheel packaging "setuptools<81"
 	$(VENV_ANALYSIS_PY) -m pip install -r requirements-analysis.txt
 	# Install package metadata + console scripts without re-resolving deps.
@@ -47,7 +65,7 @@ venv:
 #   export JAVA_HOME=$(pwd)/venv_image/lib/jvm
 #   export PATH="$$JAVA_HOME/bin:$$PATH"
 venv-image:
-	conda create -p ./venv_image python=3.10 openjdk=17 pip setuptools wheel -y
+	$(CONDA) create -p ./venv_image python=3.10 openjdk=17 pip setuptools wheel -y
 	$(VENV_IMAGE_PY) -m pip install --upgrade pip wheel packaging "setuptools<81"
 	$(VENV_IMAGE_PY) -m pip install numpy==1.26.4 scipy==1.11.4
 	JAVA_HOME=$(VENV_IMAGE_JAVA_HOME) PATH="$(VENV_IMAGE_JAVA_HOME)/bin:$$PATH" $(VENV_IMAGE_PY) -m pip install --no-build-isolation python-javabridge==4.0.3
@@ -55,6 +73,15 @@ venv-image:
 	# Install package metadata + console scripts without re-resolving deps.
 	# (Deps are pinned by requirements-image.txt + the numpy/scipy bootstrap above.)
 	$(VENV_IMAGE_PY) -m pip install -e . --no-deps
+
+# Jupyter kernel — analysis stack + ipykernel at ./venv_jupyter (Python 3.12 + requirements-jupyter.txt)
+venv-jupyter:
+	$(CONDA) create -p ./venv_jupyter python=3.12 pip setuptools wheel -y
+	$(VENV_JUPYTER_PY) -m pip install --upgrade pip wheel packaging "setuptools<81"
+	$(VENV_JUPYTER_PY) -m pip install -r requirements-jupyter.txt
+	# Install package metadata + console scripts without re-resolving deps.
+	$(VENV_JUPYTER_PY) -m pip install -e . --no-deps
+	$(VENV_JUPYTER_PY) -m ipykernel install $(JUPYTER_KERNEL_INSTALL_FLAG) --name spatial-tk --display-name "spatial-tk"
 
 # Install package
 install:
@@ -88,6 +115,9 @@ check-env-analysis:
 
 check-env-image:
 	@JAVA_HOME=$(VENV_IMAGE_JAVA_HOME) PATH="$(VENV_IMAGE_JAVA_HOME)/bin:$$PATH" $(VENV_IMAGE_PY) scripts/validate_env.py image
+
+check-env-jupyter:
+	@$(VENV_JUPYTER_PY) scripts/validate_env.py analysis
 
 test-all-envs: test-unit-analysis test-unit-image test-bridge-functional
 
@@ -155,6 +185,7 @@ clean:
 clean-all: clean
 	rm -rf venv/
 	rm -rf venv_image/
+	rm -rf venv_jupyter/
 	@echo "Cleaned everything including venv"
 
 # Development workflow shortcuts
