@@ -50,12 +50,46 @@ make venv
 make venv-image
 ```
 
+Use `mamba`, `micromamba`, or a specific conda binary by passing `CONDA` (default: `conda`):
+
+```bash
+make venv CONDA=mamba
+make venv-image CONDA=/opt/miniconda3/bin/conda
+```
+
 Then validate each environment:
 
 ```bash
 make check-env-analysis
 make check-env-image
 ```
+
+### Jupyter kernel environment
+
+For interactive notebooks that use the spatial analysis stack, create a dedicated
+Jupyter kernel prefix:
+
+```bash
+make venv-jupyter
+make check-env-jupyter
+```
+
+The same `CONDA` parameter applies (e.g. `make venv-jupyter CONDA=mamba`).
+
+This creates `./venv_jupyter` (Python 3.12, analysis stack + `ipykernel` and
+`ipywidgets`) and registers a kernel named `spatial-tk`. By default the kernel is
+installed for your user account (`~/.local/share/jupyter/kernels/spatial-tk`), so
+JupyterLab and VS Code can select it without extra configuration. To register
+the kernel only inside the prefix instead:
+
+```bash
+make venv-jupyter JUPYTER_KERNEL_INSTALL=sys-prefix
+```
+
+That writes the kernelspec to
+`./venv_jupyter/share/jupyter/kernels/spatial-tk` (useful when Jupyter is
+launched from that prefix). Select the **spatial-tk** kernel for notebooks that
+should run against this environment.
 
 ### Image-to-analysis bridge
 
