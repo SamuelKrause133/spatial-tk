@@ -160,7 +160,7 @@ def test_assign_runs_de_by_default():
          patch("spatial_tk.commands.assign.get_output_path") as mock_out, \
          patch("spatial_tk.commands.assign.get_table") as mock_get_table, \
          patch("spatial_tk.commands.assign.annotation.assign_clusters") as mock_assign_clusters, \
-         patch("spatial_tk.commands.assign.annotation.run_differential_expression") as mock_de:
+         patch("spatial_tk.commands.assign.differential.run_gene_expression_de") as mock_de:
 
         mock_path_obj = MagicMock()
         mock_path_obj.exists.return_value = True
@@ -170,11 +170,11 @@ def test_assign_runs_de_by_default():
         mock_load.return_value = mock_sdata
         mock_get_table.return_value = mock_adata
         mock_assign_clusters.return_value = mock_adata
-        mock_de.return_value = mock_adata
+        mock_de.return_value = (mock_adata, None)
 
         try:
             assign.main(args)
         except SystemExit:
             pass
 
-        assert mock_de.called, "run_differential_expression should have been called"
+        assert mock_de.called, "run_gene_expression_de should have been called"
