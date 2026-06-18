@@ -172,6 +172,8 @@ output_dir = "results/"
 groupby = "leiden_res0p5"
 # Comma-separated list of exactly 2 groups to compare (Mode A); omit for all groups (Mode B)
 # compare_groups = "HIV,NEG"
+# Optional obs column to stratify by; the analysis runs separately within each category
+# within = "cell_type_res0p5"
 # Optional obsm layer for enrichment-based differential analysis
 # obsm_layer = "score_mlm_PanglaoDB"
 # Statistical test method for gene expression DE

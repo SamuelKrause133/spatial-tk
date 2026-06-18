@@ -31,6 +31,30 @@ def test_run_gene_expression_de_mode_a(assigned_adata):
     assert set(gene_df["group2"].unique()) == {"NEG"}
 
 
+def test_run_gene_expression_de_within_mode_b(assigned_adata):
+    adata = assigned_adata.copy()
+    returned, gene_df = differential.run_gene_expression_de(
+        adata, groupby="leiden_res0p5", within="status"
+    )
+    assert returned is adata
+    assert isinstance(gene_df, pd.DataFrame)
+    if not gene_df.empty:
+        assert {"within_col", "within_value", "n_cells"} <= set(gene_df.columns)
+        assert set(gene_df["within_col"].unique()) == {"status"}
+
+
+def test_run_differential_analysis_within(assigned_adata):
+    results = differential.run_differential_analysis(
+        assigned_adata.copy(),
+        groupby="leiden_res0p5",
+        within="status",
+    )
+    assert results.gene_expression is not None
+    assert results.rank_key is None
+    if not results.gene_expression.empty:
+        assert "within_value" in results.gene_expression.columns
+
+
 def test_run_obsm_de_mode_a(assigned_adata):
     obsm_df = differential.run_obsm_de(
         assigned_adata,

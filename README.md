@@ -406,6 +406,14 @@ spatial-tk differential \
   --output-dir results/ \
   --groupby cell_type_res0p5 \
   --n-genes 50
+
+# Stratified: compare status within each cell type
+spatial-tk differential \
+  --input data.zarr \
+  --output-dir results/ \
+  --groupby status \
+  --compare-groups HIV,NEG \
+  --within cell_type_res0p5
 ```
 
 **Arguments:**
@@ -413,6 +421,7 @@ spatial-tk differential \
 - `--output-dir`: Directory for results
 - `--groupby`: Column in obs to group by (e.g., "leiden_res0p5", "status", "cell_type")
 - `--compare-groups`: Two groups to compare (Mode A), comma-separated
+- `--within`: Optional obs column to stratify by; runs the analysis separately within each category (e.g., "cell_type_res0p5")
 - `--obsm-layer`: Optional obsm layer for enrichment analysis (e.g., "score_mlm_PanglaoDB")
 - `--method`: Statistical test method (default: wilcoxon)
 - `--layer`: Layer to use for expression (default: None uses .X)

@@ -43,6 +43,7 @@ def run_gene_expression_de(
     groupby: str,
     *,
     compare_groups: Optional[List[str]] = None,
+    within: Optional[str] = None,
     method: str = "wilcoxon",
     layer: Optional[str] = None,
     key_added: Optional[str] = None,
@@ -63,10 +64,20 @@ def run_gene_expression_de(
     Results are always stored under ``rank_genes_{groupby}`` (or the explicit
     ``key_added``) and ``adata.uns["rank_genes_groups_key"]`` records that key.
 
+    When ``within`` is provided, the chosen mode is run *independently within
+    each category* of ``adata.obs[within]`` (e.g. per cell type). Results from
+    all strata are concatenated into a single DataFrame with extra
+    ``within_col``, ``within_value`` and ``n_cells`` columns. Strata that lack
+    enough groups for the requested comparison are skipped with a warning. In
+    this mode the (unchanged) original ``adata`` is returned, since the
+    per-stratum computations run on subset copies.
+
     Args:
         adata: AnnData object.
         groupby: Column in ``adata.obs`` to group by.
         compare_groups: Optional list of exactly two groups to compare.
+        within: Optional column in ``adata.obs`` whose categories define
+            strata; the DE is run separately inside each stratum.
         method: Statistical test (``wilcoxon``, ``t-test``, ``logreg``).
         layer: Optional expression layer (default ``None`` uses ``.X``).
         key_added: Optional explicit ``uns`` key; defaults to
@@ -74,10 +85,21 @@ def run_gene_expression_de(
         resume: If True, skip recomputation when results already exist.
 
     Returns:
-        Tuple of ``(adata, results_df)``. In Mode A ``adata`` is the subset
-        copy used for the comparison.
+        Tuple of ``(adata, results_df)``. In Mode A (without ``within``)
+        ``adata`` is the subset copy used for the comparison. When ``within``
+        is set, ``adata`` is the unchanged original object.
     """
     import scanpy as sc
+
+    if within is not None:
+        return _run_gene_expression_de_within(
+            adata,
+            groupby,
+            within=within,
+            compare_groups=compare_groups,
+            method=method,
+            layer=layer,
+        )
 
     rank_key = key_added or f"rank_genes_{groupby}"
 
@@ -140,6 +162,112 @@ def run_gene_expression_de(
 def _de_already_computed(adata: ad.AnnData, rank_key: str) -> bool:
     """Return True when ``rank_key`` results are already present in ``adata.uns``."""
     return rank_key in adata.uns and adata.uns.get("rank_genes_groups_key") == rank_key
+
+
+# Scanpy's ``rank_genes_groups`` cannot compute statistics for a group with
+# fewer than 2 cells, so strata/groups below this size are excluded.
+_MIN_CELLS_PER_GROUP = 2
+
+
+def _eligible_groups(adata: ad.AnnData, groupby: str) -> List:
+    """Return ``groupby`` values with enough cells for a statistical test."""
+    counts = adata.obs[groupby].value_counts()
+    return [g for g, n in counts.items() if n >= _MIN_CELLS_PER_GROUP]
+
+
+def _run_gene_expression_de_within(
+    adata: ad.AnnData,
+    groupby: str,
+    *,
+    within: str,
+    compare_groups: Optional[List[str]] = None,
+    method: str = "wilcoxon",
+    layer: Optional[str] = None,
+) -> tuple[ad.AnnData, pd.DataFrame]:
+    """
+    Run gene-expression DE independently within each category of ``within``.
+
+    Reuses :func:`run_gene_expression_de` (with ``within=None``) on a subset
+    copy per stratum and concatenates the annotated results. Strata that lack
+    enough groups (each with at least ``_MIN_CELLS_PER_GROUP`` cells) for the
+    requested comparison are skipped with a warning. In Mode B, groups that are
+    too small are dropped from the stratum so the remaining comparison stays
+    valid.
+
+    Returns the unchanged original ``adata`` and the combined results
+    DataFrame (empty if no stratum was eligible).
+    """
+    if within not in adata.obs.columns:
+        raise KeyError(f"within column '{within}' not found in adata.obs")
+
+    logging.info(
+        f"Gene expression DE: stratifying by '{within}' "
+        f"(groupby='{groupby}')"
+    )
+
+    strata = [v for v in adata.obs[within].dropna().unique()]
+    results: List[pd.DataFrame] = []
+
+    for stratum in strata:
+        sub = adata[adata.obs[within] == stratum].copy()
+
+        if hasattr(sub.obs[groupby], "cat"):
+            sub.obs[groupby] = sub.obs[groupby].cat.remove_unused_categories()
+
+        counts = sub.obs[groupby].value_counts()
+
+        if compare_groups and len(compare_groups) == 2:
+            too_small = [
+                g for g in compare_groups if counts.get(g, 0) < _MIN_CELLS_PER_GROUP
+            ]
+            if too_small:
+                logging.warning(
+                    f"  Skipping {within}='{stratum}': compare group(s) "
+                    f"{too_small} have < {_MIN_CELLS_PER_GROUP} cells in '{groupby}'"
+                )
+                continue
+        else:
+            eligible = _eligible_groups(sub, groupby)
+            if len(eligible) < 2:
+                logging.warning(
+                    f"  Skipping {within}='{stratum}': fewer than 2 groups with "
+                    f">= {_MIN_CELLS_PER_GROUP} cells in '{groupby}'"
+                )
+                continue
+            # Drop too-small groups so scanpy does not choke on singletons.
+            present = [g for g, n in counts.items() if n > 0]
+            if len(eligible) < len(present):
+                sub = sub[sub.obs[groupby].isin(eligible)].copy()
+                if hasattr(sub.obs[groupby], "cat"):
+                    sub.obs[groupby] = sub.obs[groupby].cat.remove_unused_categories()
+
+        stratum_key = f"rank_genes_{groupby}__within_{within}_{stratum}"
+        _, stratum_df = run_gene_expression_de(
+            sub,
+            groupby,
+            compare_groups=compare_groups,
+            method=method,
+            layer=layer,
+            key_added=stratum_key,
+        )
+
+        stratum_df["within_col"] = within
+        stratum_df["within_value"] = stratum
+        stratum_df["n_cells"] = sub.n_obs
+        results.append(stratum_df)
+
+    if not results:
+        logging.warning(
+            f"  No eligible strata for within='{within}'; returning empty results"
+        )
+        return adata, pd.DataFrame()
+
+    combined = pd.concat(results, ignore_index=True)
+    logging.info(
+        f"  Stratified DE completed for {len(results)} of {len(strata)} "
+        f"'{within}' strata"
+    )
+    return adata, combined
 
 
 # --------------------------------------------------------------------------- #
@@ -242,6 +370,7 @@ def run_differential_analysis(
     groupby: str,
     *,
     compare_groups: Optional[List[str]] = None,
+    within: Optional[str] = None,
     method: str = "wilcoxon",
     layer: Optional[str] = None,
     obsm_layer: Optional[str] = None,
@@ -254,6 +383,8 @@ def run_differential_analysis(
         adata: AnnData object.
         groupby: Column in ``adata.obs`` to group by.
         compare_groups: Optional list of exactly two groups to compare.
+        within: Optional column in ``adata.obs`` whose categories define strata
+            for the gene-expression DE (run separately within each category).
         method: Statistical test for gene-expression DE.
         layer: Optional expression layer for gene-expression DE.
         obsm_layer: Optional ``obsm`` key for enrichment-based DE.
@@ -262,17 +393,19 @@ def run_differential_analysis(
     Returns:
         :class:`DifferentialResults` with the gene-expression DataFrame, the
         optional ``obsm`` DataFrame, the (possibly subset) AnnData, and the
-        ``rank_key`` used for gene-expression results.
+        ``rank_key`` used for gene-expression results. When ``within`` is set,
+        ``rank_key`` is ``None`` because results span multiple strata.
     """
     de_adata, gene_df = run_gene_expression_de(
         adata,
         groupby,
         compare_groups=compare_groups,
+        within=within,
         method=method,
         layer=layer,
         resume=resume,
     )
-    rank_key = de_adata.uns.get("rank_genes_groups_key")
+    rank_key = None if within is not None else de_adata.uns.get("rank_genes_groups_key")
 
     obsm_df = None
     if obsm_layer:
@@ -297,27 +430,43 @@ def save_gene_expression_de_results(
     groupby: str,
     compare_groups: Optional[List[str]] = None,
     n_genes: int = 100,
+    within: Optional[str] = None,
 ) -> None:
-    """Write gene-expression DE results to CSV using the historical naming."""
+    """Write gene-expression DE results to CSV using the historical naming.
+
+    When ``within`` is provided the results are stratified, so a ``_within_*``
+    suffix is added to filenames and top-N selection is done per stratum.
+    """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    suffix = f"_within_{within}" if within else ""
+
     if compare_groups and len(compare_groups) == 2:
         g1, g2 = compare_groups[0], compare_groups[1]
-        output_file = output_dir / f"de_genes_{g1}_vs_{g2}.csv"
+        output_file = output_dir / f"de_genes_{g1}_vs_{g2}{suffix}.csv"
         df.to_csv(output_file, index=False)
         logging.info(f"  Saved gene DE results to {output_file}")
 
-        top_file = output_dir / f"de_genes_top{n_genes}_{g1}_vs_{g2}.csv"
-        df.head(n_genes).to_csv(top_file, index=False)
+        top_file = output_dir / f"de_genes_top{n_genes}_{g1}_vs_{g2}{suffix}.csv"
+        if within and "within_value" in df.columns:
+            df.groupby("within_value", sort=False).head(n_genes).to_csv(
+                top_file, index=False
+            )
+        else:
+            df.head(n_genes).to_csv(top_file, index=False)
         return
 
-    output_file = output_dir / f"de_genes_all_groups_{groupby}.csv"
+    output_file = output_dir / f"de_genes_all_groups_{groupby}{suffix}.csv"
     df.to_csv(output_file, index=False)
     logging.info(f"  Saved gene DE results to {output_file}")
 
-    top_file = output_dir / f"de_genes_top{n_genes}_per_group_{groupby}.csv"
-    df.groupby("group").head(n_genes).to_csv(top_file, index=False)
+    top_file = output_dir / f"de_genes_top{n_genes}_per_group_{groupby}{suffix}.csv"
+    if within and "within_value" in df.columns:
+        top_keys = ["within_value", "group"]
+    else:
+        top_keys = ["group"]
+    df.groupby(top_keys, sort=False).head(n_genes).to_csv(top_file, index=False)
 
 
 def save_obsm_de_results(

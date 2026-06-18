@@ -47,6 +47,10 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         help='Comma-separated list of exactly 2 groups to compare (Mode A). E.g., "HIV,NEG". If not provided, finds markers for all groups (Mode B)'
     )
     parser.add_argument(
+        '--within',
+        help='Optional obs column whose categories stratify the analysis (e.g., "cell_type"). The differential analysis is run separately within each category.'
+    )
+    parser.add_argument(
         '--obsm-layer',
         help='Optional obsm layer to use for enrichment-based differential analysis (e.g., "score_mlm_PanglaoDB")'
     )
@@ -147,6 +151,12 @@ def main(args: argparse.Namespace) -> None:
             logging.error(f"Column '{args.groupby}' not found in obs")
             logging.info(f"Available columns: {', '.join(adata.obs.columns)}")
             sys.exit(1)
+
+        # Validate within column if provided
+        if args.within and args.within not in adata.obs.columns:
+            logging.error(f"Column '{args.within}' not found in obs")
+            logging.info(f"Available columns: {', '.join(adata.obs.columns)}")
+            sys.exit(1)
         
         # Validate compare groups if provided
         if compare_groups:
@@ -162,6 +172,7 @@ def main(args: argparse.Namespace) -> None:
             adata,
             args.groupby,
             compare_groups=compare_groups,
+            within=args.within,
             method=args.method,
             layer=args.layer,
             obsm_layer=args.obsm_layer,
@@ -175,6 +186,7 @@ def main(args: argparse.Namespace) -> None:
                 args.groupby,
                 compare_groups,
                 args.n_genes,
+                within=args.within,
             )
 
         # Save obsm DE results if requested
