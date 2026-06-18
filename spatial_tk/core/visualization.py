@@ -8,12 +8,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import logging
+import os
 from pathlib import Path
 import tomllib
 from typing import Any, Dict, Iterable, List, Optional
 
 import matplotlib
-matplotlib.use("Agg")
+
+# Only force the headless Agg backend when no interactive backend has been
+# configured (e.g. by Jupyter's ``%matplotlib inline``). This keeps CLI and
+# test usage headless while letting notebooks render figures inline.
+if not os.environ.get("MPLBACKEND") and matplotlib.get_backend().lower() == "agg":
+    matplotlib.use("Agg")
 import matplotlib.cm as cm
 from matplotlib.colors import Normalize, to_rgb
 import matplotlib.pyplot as plt
@@ -49,6 +55,15 @@ class ImageOverlay:
 
     data: np.ndarray
     extent: tuple[float, float, float, float]
+
+
+@dataclass
+class RoiPlotResult:
+    """A rendered ROI plus its live Matplotlib figure and axes."""
+
+    roi: ROI
+    fig: Any
+    ax: Any
 
 
 def load_visualization_spec(spec_path: Optional[str]) -> Dict[str, Any]:
@@ -526,11 +541,6 @@ def extract_image_overlay(
     )
 
 
-def _extract_image_array(image_element: Any) -> np.ndarray:
-    """Backward-compatible image array extraction helper."""
-    return extract_image_overlay(image_element).data
-
-
 def _plot_background(ax: Any, image_overlay: ImageOverlay, image_alpha: float) -> None:
     """Plot background image with ROI extent alignment."""
     ax.imshow(
@@ -542,19 +552,38 @@ def _plot_background(ax: Any, image_overlay: ImageOverlay, image_alpha: float) -
     )
 
 
-def render_roi_plot(
+def plot_roi(
     coords: np.ndarray,
     obs: pd.DataFrame,
     roi: ROI,
     style_arrays: Dict[str, Any],
-    output_path: Path,
+    *,
     title: Optional[str] = None,
     figsize: Optional[List[float]] = None,
     dpi: int = 300,
     background_image: Optional[ImageOverlay] = None,
     image_alpha: float = 0.5,
-) -> None:
-    """Render one ROI/full-slide point plot to disk."""
+):
+    """
+    Build one ROI/full-slide point plot and return the live Matplotlib objects.
+
+    The caller owns the returned figure (it is *not* closed here), making this
+    suitable for interactive notebook use and further customization.
+
+    Args:
+        coords: ``(n_points, 2)`` coordinate array.
+        obs: Per-point observation DataFrame (kept for API symmetry).
+        roi: Region of interest to render.
+        style_arrays: Style arrays from :func:`compile_style_arrays`.
+        title: Optional title (defaults to ``roi.name``).
+        figsize: Optional ``[width, height]``.
+        dpi: Figure DPI.
+        background_image: Optional background image overlay.
+        image_alpha: Alpha for the background image.
+
+    Returns:
+        ``(fig, ax)`` tuple, or ``None`` when no points fall inside the ROI.
+    """
     in_roi = (
         (coords[:, 0] >= roi.xmin)
         & (coords[:, 0] <= roi.xmax)
@@ -563,7 +592,7 @@ def render_roi_plot(
     )
     if not np.any(in_roi):
         logging.warning("No points fall inside ROI %s", roi.name)
-        return
+        return None
 
     x = coords[in_roi, 0]
     y = coords[in_roi, 1]
@@ -624,9 +653,194 @@ def render_roi_plot(
     ax.set_ylabel("y")
     ax.set_title(title or roi.name)
     fig.tight_layout()
+    return fig, ax
+
+
+def render_roi_plot(
+    coords: np.ndarray,
+    obs: pd.DataFrame,
+    roi: ROI,
+    style_arrays: Dict[str, Any],
+    output_path: Path,
+    title: Optional[str] = None,
+    figsize: Optional[List[float]] = None,
+    dpi: int = 300,
+    background_image: Optional[ImageOverlay] = None,
+    image_alpha: float = 0.5,
+) -> None:
+    """Render one ROI/full-slide point plot to disk."""
+    result = plot_roi(
+        coords,
+        obs,
+        roi,
+        style_arrays,
+        title=title,
+        figsize=figsize,
+        dpi=dpi,
+        background_image=background_image,
+        image_alpha=image_alpha,
+    )
+    if result is None:
+        return
+
+    fig, _ = result
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
+
+
+def resolve_background_image(
+    image_sdata: Any,
+    coords: np.ndarray,
+    *,
+    image_layer: Optional[str] = None,
+    image_scale: Optional[int] = None,
+    image_channel: Optional[str] = None,
+    image_transform: Optional[str] = None,
+    image_channels: Optional[str] = None,
+    channel_colors: Optional[str] = None,
+    contrast_percentiles: Optional[Any] = None,
+) -> Optional[ImageOverlay]:
+    """
+    Build a background :class:`ImageOverlay` from a SpatialData images mapping.
+
+    Selects the image layer (first available when ``image_layer`` is None),
+    extracts the overlay aligned to ``coords``, and returns ``None`` when no
+    images are available or extraction fails.
+
+    Args:
+        image_sdata: Object exposing an ``images`` mapping (e.g. SpatialData).
+        coords: ``(n_points, 2)`` coordinate array for alignment.
+        image_layer: Optional image layer key; defaults to the first layer.
+        image_scale: Optional multiscale pyramid level.
+        image_channel: Optional single channel name/index.
+        image_transform: Coordinate transform (defaults to ``scale_xy``).
+        image_channels: Optional comma-separated channels for compositing.
+        channel_colors: Optional comma-separated colors for compositing.
+        contrast_percentiles: Optional contrast percentile spec.
+
+    Returns:
+        An :class:`ImageOverlay`, or ``None`` if unavailable.
+    """
+    if not (hasattr(image_sdata, "images") and image_sdata.images):
+        logging.warning("Overlay image requested but no SpatialData images found")
+        return None
+
+    layer = image_layer or list(image_sdata.images.keys())[0]
+    try:
+        return extract_image_overlay(
+            image_sdata.images[layer],
+            image_scale=image_scale,
+            image_channel=image_channel,
+            coords=coords,
+            image_transform=image_transform or "scale_xy",
+            image_channels=image_channels,
+            channel_colors=channel_colors,
+            contrast_percentiles=contrast_percentiles,
+        )
+    except Exception as exc:
+        logging.warning("Could not parse image layer '%s' for overlay: %s", layer, exc)
+        return None
+
+
+def run_roi_visualization(
+    coords: np.ndarray,
+    obs: pd.DataFrame,
+    *,
+    rois: Optional[List[ROI]] = None,
+    view: str = "full",
+    spec: Optional[Dict[str, Any]] = None,
+    spec_path: Optional[str] = None,
+    roi_strings: Optional[List[str]] = None,
+    roi_file: Optional[str] = None,
+    random_rois: int = 0,
+    roi_width: Optional[float] = None,
+    roi_height: Optional[float] = None,
+    random_state: int = 0,
+    max_points: Optional[int] = None,
+    background_image: Optional[ImageOverlay] = None,
+    figsize: Optional[List[float]] = None,
+    dpi: int = 300,
+    image_alpha: float = 0.5,
+    title: Optional[str] = None,
+) -> List[RoiPlotResult]:
+    """
+    Render one or more ROIs programmatically and return live figures.
+
+    This is the notebook/script entry point that mirrors the ``visualize``
+    command. ROIs are resolved (unless provided), optional subsampling is
+    applied, styles are compiled, and each ROI is plotted via
+    :func:`plot_roi`. Figures are returned open for further customization.
+
+    Args:
+        coords: ``(n_points, 2)`` coordinate array.
+        obs: Per-point observation DataFrame.
+        rois: Optional explicit ROI list (skips ``resolve_rois``).
+        view: ``"full"`` or ``"roi"`` when resolving ROIs.
+        spec: Optional visualization spec dict.
+        spec_path: Optional path to a TOML spec (used when ``spec`` is None).
+        roi_strings: Optional ROI bbox strings.
+        roi_file: Optional CSV of ROIs.
+        random_rois: Number of random ROIs to generate.
+        roi_width: Random ROI width.
+        roi_height: Random ROI height.
+        random_state: Seed for random ROIs / subsampling.
+        max_points: Optional max points to render (uniform random sample).
+        background_image: Optional background overlay applied to every ROI.
+        figsize: Optional ``[width, height]``.
+        dpi: Figure DPI.
+        image_alpha: Background image alpha.
+        title: Optional title override.
+
+    Returns:
+        List of :class:`RoiPlotResult`. ROIs containing no points are skipped.
+    """
+    if spec is None:
+        spec = load_visualization_spec(spec_path)
+
+    coords = np.asarray(coords)
+    if max_points and max_points > 0 and coords.shape[0] > max_points:
+        sample_idx = np.random.default_rng(random_state).choice(
+            coords.shape[0], size=max_points, replace=False
+        )
+        coords = coords[sample_idx]
+        obs = obs.iloc[sample_idx].copy()
+
+    if rois is None:
+        rois = resolve_rois(
+            coords=coords,
+            view=view,
+            roi_strings=roi_strings,
+            roi_file=roi_file,
+            random_rois=random_rois,
+            roi_width=roi_width,
+            roi_height=roi_height,
+            random_state=random_state,
+        )
+
+    plot_spec = spec.get("plot", {})
+    resolved_figsize = figsize or plot_spec.get("figsize", [8, 8])
+    style_arrays = compile_style_arrays(obs=obs, spec=spec)
+
+    results: List[RoiPlotResult] = []
+    for roi in rois:
+        result = plot_roi(
+            coords,
+            obs,
+            roi,
+            style_arrays,
+            title=title or plot_spec.get("title") or roi.name,
+            figsize=resolved_figsize,
+            dpi=dpi,
+            background_image=background_image,
+            image_alpha=image_alpha,
+        )
+        if result is None:
+            continue
+        fig, ax = result
+        results.append(RoiPlotResult(roi=roi, fig=fig, ax=ax))
+
+    return results
 
 
 def write_roi_metadata(rois: List[ROI], output_path: Path, random_state: Optional[int] = None) -> None:

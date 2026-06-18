@@ -92,3 +92,98 @@ def test_extract_image_overlay_single_scale_channel_first():
     assert overlay.data.shape == (4, 5)
     assert overlay.extent == (0.0, 5.0, 0.0, 4.0)
     assert np.all(overlay.data == 1)
+
+
+# ---------------------------------------------------------------------------
+# plot_roi / run_roi_visualization
+# ---------------------------------------------------------------------------
+def _coords_obs_styles(n=20):
+    rng = np.random.default_rng(0)
+    coords = rng.uniform(0, 100, size=(n, 2))
+    obs = pd.DataFrame({"cell_type": ["A" if i % 2 else "B" for i in range(n)]})
+    styles = visualization.compile_style_arrays(
+        obs, {"points": {"default_color": "#999999"}}
+    )
+    return coords, obs, styles
+
+
+def test_plot_roi_returns_figure_and_axes(tmp_path):
+    import matplotlib
+    from matplotlib.figure import Figure
+    from matplotlib.axes import Axes
+    import matplotlib.pyplot as plt
+
+    coords, obs, styles = _coords_obs_styles()
+    roi = visualization.ROI("full", 0.0, 0.0, 100.0, 100.0, "full")
+
+    result = visualization.plot_roi(coords, obs, roi, styles)
+    assert result is not None
+    fig, ax = result
+    assert isinstance(fig, Figure)
+    assert isinstance(ax, Axes)
+    # Figure remains open; caller owns its lifecycle.
+    assert plt.fignum_exists(fig.number)
+    fig.savefig(tmp_path / "roi.png")
+    plt.close(fig)
+
+
+def test_plot_roi_empty_returns_none():
+    coords, obs, styles = _coords_obs_styles()
+    # ROI far outside the point cloud.
+    roi = visualization.ROI("empty", 1000.0, 1000.0, 2000.0, 2000.0, "manual")
+    assert visualization.plot_roi(coords, obs, roi, styles) is None
+
+
+def test_run_roi_visualization_full():
+    from matplotlib.figure import Figure
+
+    coords, obs, _ = _coords_obs_styles()
+    results = visualization.run_roi_visualization(
+        coords, obs, view="full", spec={"points": {"default_color": "#999999"}}
+    )
+    assert len(results) == 1
+    assert isinstance(results[0].fig, Figure)
+    assert results[0].roi.source == "full"
+
+
+def test_run_roi_visualization_random_rois():
+    coords, obs, _ = _coords_obs_styles(n=200)
+    results = visualization.run_roi_visualization(
+        coords,
+        obs,
+        view="roi",
+        random_rois=2,
+        roi_width=40,
+        roi_height=40,
+        random_state=7,
+        spec={"points": {"default_color": "#999999"}},
+    )
+    assert len(results) == 2
+    import matplotlib.pyplot as plt
+
+    for r in results:
+        assert plt.fignum_exists(r.fig.number)
+        plt.close(r.fig)
+
+
+def test_run_roi_visualization_roi_string():
+    coords, obs, _ = _coords_obs_styles()
+    results = visualization.run_roi_visualization(
+        coords,
+        obs,
+        view="roi",
+        roi_strings=["0,0,100,100"],
+        spec={"points": {"default_color": "#999999"}},
+    )
+    assert results[0].roi.xmin == 0.0
+    assert results[0].roi.xmax == 100.0
+
+
+def test_run_roi_visualization_axes_customizable():
+    coords, obs, _ = _coords_obs_styles()
+    results = visualization.run_roi_visualization(
+        coords, obs, view="full", spec={"points": {"default_color": "#999999"}}
+    )
+    ax = results[0].ax
+    ax.set_title("custom title")
+    assert ax.get_title() == "custom title"

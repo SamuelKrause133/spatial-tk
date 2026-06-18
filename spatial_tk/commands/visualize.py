@@ -19,9 +19,9 @@ from spatial_tk.core.data_io import (
 )
 from spatial_tk.core.visualization import (
     compile_style_arrays,
-    extract_image_overlay,
     load_visualization_spec,
     render_roi_plot,
+    resolve_background_image,
     resolve_rois,
     write_resolved_settings,
     write_roi_metadata,
@@ -165,51 +165,39 @@ def main(args: argparse.Namespace) -> None:
                 )
             if image_source:
                 image_sdata = load_image_source(Path(image_source), sample_name=input_path.name)
-            if hasattr(image_sdata, "images") and image_sdata.images:
-                image_layer = args.image_layer or plot_spec.get("image_layer")
-                if not image_layer:
-                    image_layer = list(image_sdata.images.keys())[0]
-                try:
-                    image_scale = args.image_scale
-                    if image_scale is None and "image_scale" in plot_spec:
-                        image_scale = int(plot_spec["image_scale"])
-                    image_channel = args.image_channel or plot_spec.get("image_channel")
-                    image_spec = spec.get("image", {})
-                    image_transform = (
-                        args.image_transform
-                        or image_spec.get("transform")
-                        or plot_spec.get("image_transform")
-                        or "scale_xy"
-                    )
-                    image_channels = (
-                        args.image_channels
-                        or image_spec.get("channels")
-                        or plot_spec.get("image_channels")
-                    )
-                    channel_colors = (
-                        args.image_channel_colors
-                        or image_spec.get("channel_colors")
-                        or plot_spec.get("image_channel_colors")
-                    )
-                    contrast_percentiles = image_spec.get(
-                        "contrast_percentiles",
-                        plot_spec.get("image_contrast_percentiles"),
-                    )
-                    background_image = extract_image_overlay(
-                        image_sdata.images[image_layer],
-                        image_scale=image_scale,
-                        image_channel=image_channel,
-                        coords=coords,
-                        image_transform=image_transform,
-                        image_channels=image_channels,
-                        channel_colors=channel_colors,
-                        contrast_percentiles=contrast_percentiles,
-                    )
-                except Exception as exc:
-                    logging.warning("Could not parse image layer '%s' for overlay: %s", image_layer, exc)
-                    background_image = None
-            else:
-                logging.warning("Overlay image requested but no SpatialData images found")
+
+            image_spec = spec.get("image", {})
+            image_scale = args.image_scale
+            if image_scale is None and "image_scale" in plot_spec:
+                image_scale = int(plot_spec["image_scale"])
+
+            background_image = resolve_background_image(
+                image_sdata,
+                coords,
+                image_layer=args.image_layer or plot_spec.get("image_layer"),
+                image_scale=image_scale,
+                image_channel=args.image_channel or plot_spec.get("image_channel"),
+                image_transform=(
+                    args.image_transform
+                    or image_spec.get("transform")
+                    or plot_spec.get("image_transform")
+                    or "scale_xy"
+                ),
+                image_channels=(
+                    args.image_channels
+                    or image_spec.get("channels")
+                    or plot_spec.get("image_channels")
+                ),
+                channel_colors=(
+                    args.image_channel_colors
+                    or image_spec.get("channel_colors")
+                    or plot_spec.get("image_channel_colors")
+                ),
+                contrast_percentiles=image_spec.get(
+                    "contrast_percentiles",
+                    plot_spec.get("image_contrast_percentiles"),
+                ),
+            )
 
         style_arrays = compile_style_arrays(obs=obs, spec=spec)
 
