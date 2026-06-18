@@ -5,6 +5,7 @@ Spatial neighborhood composition and clustering utilities.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, Optional
 
 import anndata as ad
@@ -248,3 +249,172 @@ def store_spatial_cluster_results(
 
     adata.uns[results_key] = common_payload
     return adata
+
+
+def run_spatial_cluster(
+    adata: ad.AnnData,
+    *,
+    cell_type_key: str,
+    connectivities_key: str = "spatial_connectivities",
+    mode: str = "kmeans",
+    output_key: str = "spatial_cluster",
+    results_key: str = "spatial_cluster",
+    include_self: bool = True,
+    normalize_composition: bool = True,
+    store_composition_in_obsm: bool = True,
+    resume: bool = False,
+    neighbor_k: Optional[int] = None,
+    spatial_key: str = "spatial",
+    library_key: Optional[str] = None,
+    min_clusters: int = 2,
+    max_clusters: int = 20,
+    random_state: int = 0,
+    force_n_clusters: Optional[int] = None,
+    hdbscan_min_cluster_size: int = 5,
+    hdbscan_min_samples: Optional[int] = None,
+    hdbscan_cluster_selection_epsilon: float = 0.0,
+    hdbscan_metric: str = "euclidean",
+    hdbscan_allow_single_cluster: bool = False,
+) -> ad.AnnData:
+    """
+    Run the full spatial neighborhood clustering pipeline on ``adata``.
+
+    Encapsulates neighborhood composition, k-means / HDBSCAN clustering, and
+    in-place result storage so notebooks and the CLI share one code path.
+
+    Steps:
+
+    1. Optional ``resume`` early-return when results already exist.
+    2. Ensure spatial connectivities (compute via
+       :func:`spatial_tk.core.spatial_neighbors.compute_spatial_neighbors`
+       when missing and ``neighbor_k`` is provided).
+    3. Build neighborhood composition vectors.
+    4. Dispatch to k-means or HDBSCAN.
+    5. Store labels in ``obs`` and run metadata in ``uns``.
+
+    Args:
+        adata: AnnData object with spatial coordinates and a cell-type column.
+        cell_type_key: Column in ``adata.obs`` with cell-type labels.
+        connectivities_key: Key in ``adata.obsp`` for the connectivity matrix.
+        mode: ``"kmeans"`` or ``"hdbscan"``.
+        output_key: ``adata.obs`` key for the resulting cluster labels.
+        results_key: ``adata.uns`` key for the detailed run outputs.
+        include_self: Include each cell in its own neighborhood.
+        normalize_composition: Normalize composition vectors to proportions.
+        store_composition_in_obsm: Store the composition matrix in ``obsm``.
+        resume: Skip computation when results already exist.
+        neighbor_k: If connectivities are missing, number of neighbors to
+            compute on demand. Required when connectivities are absent.
+        spatial_key: ``adata.obsm`` key for spatial coordinates.
+        library_key: Optional library/batch key for neighbor computation.
+        min_clusters: k-means minimum cluster count to sweep.
+        max_clusters: k-means maximum cluster count to sweep.
+        random_state: Random seed for k-means.
+        force_n_clusters: Force a specific k-means cluster count.
+        hdbscan_min_cluster_size: HDBSCAN minimum cluster size.
+        hdbscan_min_samples: HDBSCAN ``min_samples``.
+        hdbscan_cluster_selection_epsilon: HDBSCAN selection epsilon.
+        hdbscan_metric: HDBSCAN distance metric.
+        hdbscan_allow_single_cluster: Allow HDBSCAN to return a single cluster.
+
+    Returns:
+        The same ``adata`` with cluster labels and run metadata added.
+
+    Raises:
+        ValueError: If ``mode`` is invalid, if ``force_n_clusters`` is used
+            outside k-means, or if connectivities are missing and no valid
+            ``neighbor_k`` is provided.
+    """
+    if mode not in ("kmeans", "hdbscan"):
+        raise ValueError(f"mode must be 'kmeans' or 'hdbscan', got {mode!r}")
+    if mode != "kmeans" and force_n_clusters is not None:
+        raise ValueError("force_n_clusters is only supported when mode='kmeans'")
+
+    if resume and output_key in adata.obs.columns and results_key in adata.uns:
+        logging.info(
+            "Spatial cluster results already present for %s (resuming)", results_key
+        )
+        return adata
+
+    if connectivities_key not in adata.obsp:
+        if neighbor_k is None:
+            raise ValueError(
+                f"Missing adata.obsp['{connectivities_key}']; provide neighbor_k "
+                "to compute neighbors on demand."
+            )
+        if neighbor_k <= 0:
+            raise ValueError("neighbor_k must be > 0 when provided")
+
+        from spatial_tk.core import spatial_neighbors
+
+        if connectivities_key.endswith("_connectivities"):
+            neighbor_key_added = connectivities_key[: -len("_connectivities")]
+        else:
+            neighbor_key_added = connectivities_key
+
+        spatial_neighbors.compute_spatial_neighbors(
+            adata=adata,
+            spatial_key=spatial_key,
+            library_key=library_key,
+            coord_type="generic",
+            n_neighs=neighbor_k,
+            radius=None,
+            transform=None,
+            key_added=neighbor_key_added,
+        )
+
+    composition_result = build_neighborhood_composition(
+        adata=adata,
+        connectivities_key=connectivities_key,
+        cell_type_key=cell_type_key,
+        include_self=include_self,
+        normalize=normalize_composition,
+    )
+    composition = composition_result["composition"]
+    categories = composition_result["cell_type_categories"]
+
+    if mode == "kmeans":
+        cluster_result = run_spatial_kmeans(
+            composition=composition,
+            min_clusters=min_clusters,
+            max_clusters=max_clusters,
+            random_state=random_state,
+            force_n_clusters=force_n_clusters,
+        )
+    else:
+        cluster_result = run_spatial_hdbscan(
+            composition=composition,
+            min_cluster_size=hdbscan_min_cluster_size,
+            min_samples=hdbscan_min_samples,
+            cluster_selection_epsilon=hdbscan_cluster_selection_epsilon,
+            metric=hdbscan_metric,
+            allow_single_cluster=hdbscan_allow_single_cluster,
+        )
+
+    params = {
+        "mode": mode,
+        "connectivities_key": connectivities_key,
+        "cell_type_key": cell_type_key,
+        "include_self": include_self,
+        "normalize_composition": normalize_composition,
+        "random_state": random_state,
+        "min_clusters": min_clusters,
+        "max_clusters": max_clusters,
+        "force_n_clusters": force_n_clusters,
+        "hdbscan_min_cluster_size": hdbscan_min_cluster_size,
+        "hdbscan_min_samples": hdbscan_min_samples,
+        "hdbscan_cluster_selection_epsilon": hdbscan_cluster_selection_epsilon,
+        "hdbscan_metric": hdbscan_metric,
+        "hdbscan_allow_single_cluster": hdbscan_allow_single_cluster,
+    }
+
+    return store_spatial_cluster_results(
+        adata=adata,
+        output_key=output_key,
+        results_key=results_key,
+        params=params,
+        composition=composition,
+        categories=categories,
+        cluster_results=cluster_result,
+        store_composition_in_obsm=store_composition_in_obsm,
+    )
