@@ -22,6 +22,7 @@ from spatial_tk.core.data_io import (
     save_table_only,
 )
 from spatial_tk.core import annotation
+from spatial_tk.core import differential
 from spatial_tk.core import plotting
 from spatial_tk.utils.helpers import (
     get_output_path,
@@ -193,7 +194,7 @@ def main(args: argparse.Namespace) -> None:
         # ------------------------------------------------------------------ #
         if args.run_de:
             for cluster_key in cluster_keys:
-                adata = annotation.run_differential_expression(adata, cluster_key)
+                adata, _ = differential.run_gene_expression_de(adata, cluster_key)
 
         # ------------------------------------------------------------------ #
         # Save

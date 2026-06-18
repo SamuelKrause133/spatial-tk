@@ -16,7 +16,6 @@ import anndata as ad
 import decoupler as dc
 import numpy as np
 import pandas as pd
-import scanpy as sc
 
 
 # ---------------------------------------------------------------------------
@@ -352,7 +351,7 @@ def assign_clusters(
 
 
 # ---------------------------------------------------------------------------
-# Legacy / convenience functions (kept for backward compatibility)
+# Marker-gene and decoupler resource helpers
 # ---------------------------------------------------------------------------
 
 def load_marker_genes(marker_path: str) -> Dict[str, List[str]]:
@@ -432,59 +431,6 @@ def get_panglao_markers(
     return markers[["source", "target"]]
 
 
-def annotate_with_markers(
-    adata: ad.AnnData,
-    markers: Dict[str, List[str]],
-    cluster_key: str = "leiden",
-    annotation_key: str = "cell_type",
-    resume: bool = False,
-    tmin: int = 2,
-) -> ad.AnnData:
-    """
-    Annotate clusters with cell types based on marker gene expression using
-    decoupler's multivariate linear model (MLM) approach.
-
-    This is kept for backward compatibility; internally it delegates to
-    run_enrichment_scoring and assign_clusters.
-
-    Args:
-        adata: AnnData object
-        markers: Dictionary mapping cell type to list of marker genes
-        cluster_key: Key in adata.obs containing cluster assignments
-        annotation_key: Key name for storing cell type annotations
-        resume: If True, skip if annotation already exists
-        tmin: Minimum number of targets per source (default: 2)
-
-    Returns:
-        AnnData object with cell type annotations added
-    """
-    if resume and annotation_key in adata.obs.columns:
-        logging.info("Cell type annotation already exists (resuming)")
-        return adata
-
-    # Log coverage
-    all_marker_genes = {g for genes in markers.values() for g in genes}
-    missing = all_marker_genes - set(adata.var_names)
-    if missing:
-        logging.info(f"Note: {len(missing)} marker genes not found in dataset")
-
-    net_df = markers_dict_to_dataframe(markers)
-
-    score_key = annotation_key  # re-use annotation_key as score_key suffix
-    adata = run_enrichment_scoring(adata, net_df, score_key=score_key, method="mlm", tmin=tmin)
-
-    obsm_key = f"score_mlm_{score_key}"
-    adata = assign_clusters(
-        adata,
-        score_key=obsm_key,
-        cluster_key=cluster_key,
-        annotation_key=annotation_key,
-        strategy="top_positive",
-    )
-
-    return adata
-
-
 def calculate_mlm_scores(
     adata: ad.AnnData,
     use_panglao: bool = True,
@@ -537,86 +483,3 @@ def calculate_mlm_scores(
 
     logging.info("MLM score calculation complete")
     return adata
-
-
-def run_differential_expression(
-    adata: ad.AnnData,
-    cluster_key: str,
-    method: str = "wilcoxon",
-    resume: bool = False,
-) -> ad.AnnData:
-    """
-    Run differential expression analysis to find marker genes for each cluster.
-
-    Args:
-        adata: AnnData object
-        cluster_key: Key in adata.obs containing cluster assignments
-        method: Statistical test to use (default: wilcoxon)
-        resume: If True, skip if differential expression already computed
-
-    Returns:
-        AnnData object with differential expression results added
-    """
-    rank_key = f"rank_genes_{cluster_key}"
-
-    if resume and "rank_genes_groups" in adata.uns and adata.uns.get("rank_genes_groups_key") == rank_key:
-        logging.info(f"Differential expression already computed for {cluster_key} (resuming)")
-        return adata
-
-    logging.info(f"Running differential expression analysis for {cluster_key}")
-
-    sc.tl.rank_genes_groups(
-        adata,
-        groupby=cluster_key,
-        method=method,
-        use_raw=False,
-        key_added=rank_key,
-        layer=None,
-    )
-
-    adata.uns["rank_genes_groups_key"] = rank_key
-
-    n_clusters = adata.obs[cluster_key].nunique()
-    logging.info(f"  Differential expression completed for {n_clusters} clusters")
-
-    return adata
-
-
-def save_differential_expression_results(
-    adata: ad.AnnData,
-    cluster_key: str,
-    output_dir,
-    n_genes: int = 100,
-) -> None:
-    """
-    Save differential expression results to CSV files.
-
-    Args:
-        adata: AnnData object with differential expression results
-        cluster_key: Key in adata.obs containing cluster assignments
-        output_dir: Directory to save output files
-        n_genes: Number of top genes to save per cluster
-    """
-    rank_key = f"rank_genes_{cluster_key}"
-
-    if rank_key not in adata.uns:
-        logging.warning(f"  No differential expression results found for {cluster_key}")
-        return
-
-    logging.info(f"  Saving differential expression results for {cluster_key}")
-
-    result = sc.get.rank_genes_groups_df(adata, group=None, key=rank_key)
-
-    de_dir = output_dir / "differential_expression"
-    de_dir.mkdir(exist_ok=True)
-
-    res_str = cluster_key.replace("leiden_res", "")
-
-    all_results_path = de_dir / f"deg_all_clusters_res{res_str}.csv"
-    result.to_csv(all_results_path, index=False)
-    logging.info(f"    Saved all DE genes to {all_results_path}")
-
-    top_results_path = de_dir / f"deg_top{n_genes}_per_cluster_res{res_str}.csv"
-    top_result = result.groupby("group").head(n_genes)
-    top_result.to_csv(top_results_path, index=False)
-    logging.info(f"    Saved top {n_genes} DE genes per cluster to {top_results_path}")
