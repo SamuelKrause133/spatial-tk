@@ -613,18 +613,90 @@ def _table_attrs_from_adata(adata: ad.AnnData) -> dict:
     }
 
 
+def _inject_table_attrs_from_disk(adata: ad.AnnData, table_path: Path) -> None:
+    """
+    Populate ``adata.uns['spatialdata_attrs']`` from a table group's on-disk attrs.
+
+    SpatialData stores ``region``/``region_key``/``instance_key`` as top-level
+    group attributes, which anndata's reader does not surface into ``uns``. A table
+    loaded with plain anndata therefore looks "unannotated"; without re-attaching
+    these the canonical writer would drop the region annotation on the next save.
+    """
+    from spatialdata.models import TableModel
+
+    try:
+        import zarr
+
+        group = zarr.open_group(str(table_path), mode="r")
+        attrs = dict(group.attrs)
+    except Exception as exc:  # pragma: no cover - defensive
+        logging.debug("Could not read table group attrs from %s: %s", table_path, exc)
+        return
+
+    keys = {k: attrs[k] for k in ("region", "region_key", "instance_key") if k in attrs}
+    if {"region", "region_key", "instance_key"} <= keys.keys():
+        adata.uns[TableModel.ATTRS_KEY] = keys
+
+
+def _ensure_inmemory_table_attrs(adata: ad.AnnData) -> None:
+    """
+    Make ``adata`` a valid SpatialData ``TableModel`` in memory before writing.
+
+    Reconciles ``uns['spatialdata_attrs']`` with the current ``obs`` so the
+    canonical writer (:func:`spatialdata._io.io_table.write_table`) stamps correct
+    region/instance metadata and a format version. If valid region and instance
+    columns cannot be determined, any partial attrs are dropped so the writer still
+    emits a versioned (but unannotated) table rather than failing validation.
+    """
+    from spatialdata.models import TableModel
+
+    attrs = dict(adata.uns.get(TableModel.ATTRS_KEY, {}) or {})
+    region_key = attrs.get("region_key")
+    instance_key = attrs.get("instance_key")
+
+    if not region_key or region_key not in adata.obs:
+        region_key = "region" if "region" in adata.obs else None
+    if not instance_key or instance_key not in adata.obs:
+        instance_key = next(
+            (c for c in ("cell_id", "cell_labels", "instance_id") if c in adata.obs),
+            None,
+        )
+
+    if region_key and instance_key:
+        # TableModel validation requires region_key to be categorical and
+        # instance_key to be int/string (not categorical).
+        if not isinstance(adata.obs[region_key].dtype, pd.CategoricalDtype):
+            adata.obs[region_key] = adata.obs[region_key].astype("category")
+        if isinstance(adata.obs[instance_key].dtype, pd.CategoricalDtype):
+            adata.obs[instance_key] = adata.obs[instance_key].astype(
+                adata.obs[instance_key].cat.categories.dtype
+            )
+        region = sorted(str(r) for r in adata.obs[region_key].unique().tolist())
+        adata.uns[TableModel.ATTRS_KEY] = {
+            "region": region,
+            "region_key": region_key,
+            "instance_key": instance_key,
+        }
+    else:
+        adata.uns.pop(TableModel.ATTRS_KEY, None)
+
+
 def repair_table_attrs_on_disk(
     zarr_path: Path,
     tables: Optional[Mapping[str, ad.AnnData]] = None,
 ) -> None:
     """
-    Ensure each ``tables/<name>/zarr.json`` (or ``.zattrs``) has SpatialData table attrs.
+    Compatibility fallback: ensure each ``tables/<name>/zarr.json`` (or ``.zattrs``)
+    has the SpatialData table attrs required for reading.
 
-    Repairs stores written before attrs were persisted correctly, so ``sd.read_zarr``
-    can load the table (``assert version is not None`` in spatialdata I/O).
+    The canonical write path (:func:`save_table_only` via ``write_table``) now
+    persists these attrs at write time, so this function is only needed for stores
+    written by older versions of spatial-tk that lacked the ``version`` attr (causing
+    ``assert version is not None`` in spatialdata I/O). It logs a warning whenever it
+    actually has to patch a store, so the fallback is visible to the user.
 
-    Idempotent when attrs are already complete. Sources attrs from ``tables`` if given,
-    otherwise reads each table AnnData from disk.
+    Idempotent when attrs are already complete (no log, no write). Sources attrs from
+    ``tables`` if given, otherwise reads each table AnnData from disk.
     """
     import json
     import os
@@ -685,7 +757,10 @@ def repair_table_attrs_on_disk(
             missing = [k for k in required_keys if k not in attributes]
             if missing:
                 logging.warning(
-                    "Repairing table attrs in %s (missing: %s)",
+                    "Compatibility fallback: table store %s is missing SpatialData "
+                    "attrs %s (likely written by an older spatial-tk version). "
+                    "Patching them on disk so the store can be read; re-saving this "
+                    "store will produce a fully valid table without needing repair.",
                     zarr_v3_path,
                     missing,
                 )
@@ -706,7 +781,10 @@ def repair_table_attrs_on_disk(
             missing = [k for k in required_keys if k not in attrs]
             if missing:
                 logging.warning(
-                    "Repairing table attrs in %s (missing: %s)",
+                    "Compatibility fallback: table store %s is missing SpatialData "
+                    "attrs %s (likely written by an older spatial-tk version). "
+                    "Patching them on disk so the store can be read; re-saving this "
+                    "store will produce a fully valid table without needing repair.",
                     zattrs_path,
                     missing,
                 )
@@ -816,6 +894,9 @@ def load_table_only(zarr_path: Path, table_key: Optional[str] = None) -> ad.AnnD
             if isinstance(store, zarr.Group):
                 # Load AnnData directly
                 adata = ad.read_zarr(str(table_path))
+                # Re-attach SpatialData table metadata (region/keys) from the
+                # group attrs so the table stays a valid TableModel in memory.
+                _inject_table_attrs_from_disk(adata, table_path)
                 logging.info(f"Loaded table: {adata.n_obs} cells × {adata.n_vars} genes")
                 return adata
             else:
@@ -929,9 +1010,16 @@ def save_table_only(
             logging.info(f"  Removing existing table at {table_path}")
             shutil.rmtree(table_path)
         
-        # Write AnnData directly to zarr.
-        # For inplace writes, existing table path is removed above when overwrite=True.
-        adata.write_zarr(str(table_path))
+        # Ensure the table is a valid in-memory TableModel, then write through
+        # SpatialData's canonical writer so the table group carries full
+        # SpatialData attrs (region/region_key/instance_key + format version).
+        # This yields a store that ``sd.read_zarr`` can open directly, without
+        # relying on the on-disk attr-repair fallback.
+        from spatialdata._io.io_table import write_table
+
+        _ensure_inmemory_table_attrs(adata)
+        tables_group = zarr.open_group(str(tables_dir), mode="a")
+        write_table(adata, tables_group, table_name)
         
         logging.info(f"Successfully saved table: {adata.n_obs} cells × {adata.n_vars} genes")
         
