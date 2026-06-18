@@ -38,9 +38,7 @@ def test_quantitate_passes_tmin_default():
 
     with patch("spatial_tk.commands.quantitate.Path") as mock_path_cls, \
          patch("spatial_tk.commands.quantitate.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.quantitate.save_spatial_data"), \
-         patch("spatial_tk.commands.quantitate.set_table"), \
-         patch("spatial_tk.commands.quantitate.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.quantitate.save_command_output"), \
          patch("spatial_tk.commands.quantitate.get_output_path") as mock_out, \
          patch("spatial_tk.commands.quantitate.get_table") as mock_get_table, \
          patch("spatial_tk.commands.quantitate.annotation.load_marker_genes") as mock_load_markers, \
@@ -93,9 +91,7 @@ def test_quantitate_passes_custom_tmin():
 
     with patch("spatial_tk.commands.quantitate.Path") as mock_path_cls, \
          patch("spatial_tk.commands.quantitate.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.quantitate.save_spatial_data"), \
-         patch("spatial_tk.commands.quantitate.set_table"), \
-         patch("spatial_tk.commands.quantitate.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.quantitate.save_command_output"), \
          patch("spatial_tk.commands.quantitate.get_output_path") as mock_out, \
          patch("spatial_tk.commands.quantitate.get_table") as mock_get_table, \
          patch("spatial_tk.commands.quantitate.annotation.load_marker_genes") as mock_load_markers, \
@@ -154,9 +150,7 @@ def test_assign_runs_de_by_default():
 
     with patch("spatial_tk.commands.assign.Path") as mock_path_cls, \
          patch("spatial_tk.commands.assign.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.assign.save_spatial_data"), \
-         patch("spatial_tk.commands.assign.set_table"), \
-         patch("spatial_tk.commands.assign.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.assign.save_command_output"), \
          patch("spatial_tk.commands.assign.get_output_path") as mock_out, \
          patch("spatial_tk.commands.assign.get_table") as mock_get_table, \
          patch("spatial_tk.commands.assign.annotation.assign_clusters") as mock_assign_clusters, \

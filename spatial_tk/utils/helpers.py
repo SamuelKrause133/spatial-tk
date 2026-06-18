@@ -177,3 +177,38 @@ def get_output_path(input_path: str, output_path: Optional[str], inplace: bool) 
     else:
         raise ValueError("Must specify either --output or --inplace")
 
+
+def save_command_output(
+    adata: "ad.AnnData",
+    input_path: Path,
+    output_path: Path,
+    *,
+    inplace: bool,
+    table_key: Optional[str] = None,
+) -> None:
+    """
+    Persist a command's modified table to a SpatialData .zarr store.
+
+    Writes only the AnnData table (skipping other SpatialData elements) for
+    memory efficiency. For ``inplace`` the existing store's table is
+    overwritten; otherwise the source store is copied to ``output_path`` first
+    and then the table is overwritten in the copy.
+
+    Args:
+        adata: Modified AnnData table to persist.
+        input_path: Source .zarr store (used as the copy source when not inplace).
+        output_path: Destination .zarr store.
+        inplace: If True, overwrite the table in ``input_path`` (== ``output_path``).
+        table_key: Optional explicit table name within ``tables/``.
+    """
+    from spatial_tk.core.data_io import copy_spatial_store, save_table_only
+
+    prepare_spatial_data_for_save(adata)
+
+    if inplace:
+        save_table_only(adata, output_path, overwrite=True, table_key=table_key)
+    else:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        copy_spatial_store(input_path, output_path, overwrite=False)
+        save_table_only(adata, output_path, overwrite=True, table_key=table_key)
+

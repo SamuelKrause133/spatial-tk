@@ -8,19 +8,11 @@ import logging
 import sys
 from pathlib import Path
 
-from spatial_tk.core.data_io import (
-    copy_spatial_store,
-    load_existing_spatial_data,
-    load_table_only,
-    save_spatial_data,
-    save_table_only,
-)
+from spatial_tk.core.data_io import load_table_only
 from spatial_tk.utils.helpers import (
-    get_table,
     get_output_path,
-    prepare_spatial_data_for_save,
     parse_resolutions,
-    set_table,
+    save_command_output,
 )
 from spatial_tk.utils.config import load_config, merge_config_with_args
 
@@ -124,18 +116,9 @@ def main(args: argparse.Namespace) -> None:
             cluster_key = f"leiden_res{res_str}"
             adata = clustering.cluster_leiden(adata, resolution, key_added=cluster_key)
         
-        # Prepare for saving
-        prepare_spatial_data_for_save(adata)
-        
         # Save results
-        if args.inplace:
-            logging.info(f"Saving results in place: {output_path}")
-            save_table_only(adata, output_path, overwrite=True)
-        else:
-            copy_spatial_store(input_path, output_path, overwrite=False)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            logging.info(f"Saving results to: {output_path}")
-            save_table_only(adata, output_path, overwrite=True)
+        logging.info(f"Saving results to: {output_path}")
+        save_command_output(adata, input_path, output_path, inplace=args.inplace)
         
         # Generate plots if requested
         if args.save_plots:

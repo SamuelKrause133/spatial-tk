@@ -64,9 +64,7 @@ def test_spatial_cluster_forwards_args_to_core():
 
     with patch("spatial_tk.commands.spatial_cluster.Path") as mock_path_cls, \
          patch("spatial_tk.commands.spatial_cluster.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.spatial_cluster.save_spatial_data"), \
-         patch("spatial_tk.commands.spatial_cluster.set_table"), \
-         patch("spatial_tk.commands.spatial_cluster.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.spatial_cluster.save_command_output"), \
          patch("spatial_tk.commands.spatial_cluster.get_output_path") as mock_out, \
          patch("spatial_tk.commands.spatial_cluster.get_table") as mock_get_table, \
          patch("spatial_tk.commands.spatial_cluster.spatial_clustering.build_neighborhood_composition") as mock_build, \
@@ -117,9 +115,7 @@ def test_spatial_cluster_computes_neighbors_when_missing_graph_and_neighbor_k_se
 
     with patch("spatial_tk.commands.spatial_cluster.Path") as mock_path_cls, \
          patch("spatial_tk.commands.spatial_cluster.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.spatial_cluster.save_spatial_data"), \
-         patch("spatial_tk.commands.spatial_cluster.set_table"), \
-         patch("spatial_tk.commands.spatial_cluster.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.spatial_cluster.save_command_output"), \
          patch("spatial_tk.commands.spatial_cluster.get_output_path") as mock_out, \
          patch("spatial_tk.commands.spatial_cluster.get_table") as mock_get_table, \
          patch("spatial_tk.commands.spatial_cluster.spatial_neighbors_core.compute_spatial_neighbors") as mock_compute_neighbors, \
@@ -174,9 +170,7 @@ def test_spatial_cluster_config_merge_applies_values():
     with patch("spatial_tk.commands.spatial_cluster.load_config", return_value=config_dict), \
          patch("spatial_tk.commands.spatial_cluster.Path") as mock_path_cls, \
          patch("spatial_tk.commands.spatial_cluster.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.spatial_cluster.save_spatial_data"), \
-         patch("spatial_tk.commands.spatial_cluster.set_table"), \
-         patch("spatial_tk.commands.spatial_cluster.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.spatial_cluster.save_command_output"), \
          patch("spatial_tk.commands.spatial_cluster.get_output_path") as mock_out, \
          patch("spatial_tk.commands.spatial_cluster.get_table") as mock_get_table, \
          patch("spatial_tk.commands.spatial_cluster.spatial_clustering.build_neighborhood_composition") as mock_build, \
@@ -236,9 +230,7 @@ def test_spatial_cluster_hdbscan_mode_dispatches_to_hdbscan():
 
     with patch("spatial_tk.commands.spatial_cluster.Path") as mock_path_cls, \
          patch("spatial_tk.commands.spatial_cluster.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.spatial_cluster.save_spatial_data"), \
-         patch("spatial_tk.commands.spatial_cluster.set_table"), \
-         patch("spatial_tk.commands.spatial_cluster.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.spatial_cluster.save_command_output"), \
          patch("spatial_tk.commands.spatial_cluster.get_output_path") as mock_out, \
          patch("spatial_tk.commands.spatial_cluster.get_table") as mock_get_table, \
          patch("spatial_tk.commands.spatial_cluster.spatial_clustering.build_neighborhood_composition") as mock_build, \
@@ -301,9 +293,7 @@ def test_spatial_cluster_config_merge_applies_mode_and_hdbscan_params():
     with patch("spatial_tk.commands.spatial_cluster.load_config", return_value=config_dict), \
          patch("spatial_tk.commands.spatial_cluster.Path") as mock_path_cls, \
          patch("spatial_tk.commands.spatial_cluster.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.spatial_cluster.save_spatial_data"), \
-         patch("spatial_tk.commands.spatial_cluster.set_table"), \
-         patch("spatial_tk.commands.spatial_cluster.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.spatial_cluster.save_command_output"), \
          patch("spatial_tk.commands.spatial_cluster.get_output_path") as mock_out, \
          patch("spatial_tk.commands.spatial_cluster.get_table") as mock_get_table, \
          patch("spatial_tk.commands.spatial_cluster.spatial_clustering.build_neighborhood_composition") as mock_build, \

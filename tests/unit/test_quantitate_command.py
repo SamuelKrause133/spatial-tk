@@ -42,9 +42,7 @@ _MOCK_NET_DF = pd.DataFrame(
 
 _COMMON_PATCHES = [
     "spatial_tk.commands.quantitate.load_existing_spatial_data",
-    "spatial_tk.commands.quantitate.save_spatial_data",
-    "spatial_tk.commands.quantitate.set_table",
-    "spatial_tk.commands.quantitate.prepare_spatial_data_for_save",
+    "spatial_tk.commands.quantitate.save_command_output",
     "spatial_tk.commands.quantitate.get_output_path",
 ]
 
@@ -76,9 +74,7 @@ def _run_main_with_patches(args, extra_patches=None):
             mock_adata.obsm = {}
 
             with patch("spatial_tk.commands.quantitate.load_existing_spatial_data") as mock_load, \
-                 patch("spatial_tk.commands.quantitate.save_spatial_data"), \
-                 patch("spatial_tk.commands.quantitate.set_table"), \
-                 patch("spatial_tk.commands.quantitate.prepare_spatial_data_for_save"), \
+                 patch("spatial_tk.commands.quantitate.save_command_output"), \
                  patch("spatial_tk.commands.quantitate.get_output_path") as mock_out:
                 mock_load.return_value = mock_sdata
                 mock_out.return_value = mock_path_instance
@@ -109,9 +105,7 @@ def test_quantitate_custom_markers_calls_run_scoring():
 
     with patch("spatial_tk.commands.quantitate.Path") as mock_path_cls, \
          patch("spatial_tk.commands.quantitate.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.quantitate.save_spatial_data"), \
-         patch("spatial_tk.commands.quantitate.set_table"), \
-         patch("spatial_tk.commands.quantitate.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.quantitate.save_command_output"), \
          patch("spatial_tk.commands.quantitate.get_output_path") as mock_out, \
          patch("spatial_tk.commands.quantitate.get_table") as mock_get_table, \
          patch("spatial_tk.commands.quantitate.annotation.load_marker_genes") as mock_load_markers, \
@@ -153,9 +147,7 @@ def test_quantitate_custom_score_key_passed_through():
 
     with patch("spatial_tk.commands.quantitate.Path") as mock_path_cls, \
          patch("spatial_tk.commands.quantitate.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.quantitate.save_spatial_data"), \
-         patch("spatial_tk.commands.quantitate.set_table"), \
-         patch("spatial_tk.commands.quantitate.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.quantitate.save_command_output"), \
          patch("spatial_tk.commands.quantitate.get_output_path") as mock_out, \
          patch("spatial_tk.commands.quantitate.get_table") as mock_get_table, \
          patch("spatial_tk.commands.quantitate.annotation.load_marker_genes") as mock_load_markers, \
@@ -194,9 +186,7 @@ def test_quantitate_method_mlm_default():
 
     with patch("spatial_tk.commands.quantitate.Path") as mock_path_cls, \
          patch("spatial_tk.commands.quantitate.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.quantitate.save_spatial_data"), \
-         patch("spatial_tk.commands.quantitate.set_table"), \
-         patch("spatial_tk.commands.quantitate.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.quantitate.save_command_output"), \
          patch("spatial_tk.commands.quantitate.get_output_path") as mock_out, \
          patch("spatial_tk.commands.quantitate.get_table") as mock_get_table, \
          patch("spatial_tk.commands.quantitate.annotation.load_marker_genes") as mock_load_markers, \
@@ -235,9 +225,7 @@ def test_quantitate_method_ulm():
 
     with patch("spatial_tk.commands.quantitate.Path") as mock_path_cls, \
          patch("spatial_tk.commands.quantitate.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.quantitate.save_spatial_data"), \
-         patch("spatial_tk.commands.quantitate.set_table"), \
-         patch("spatial_tk.commands.quantitate.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.quantitate.save_command_output"), \
          patch("spatial_tk.commands.quantitate.get_output_path") as mock_out, \
          patch("spatial_tk.commands.quantitate.get_table") as mock_get_table, \
          patch("spatial_tk.commands.quantitate.annotation.load_marker_genes") as mock_load_markers, \
@@ -276,9 +264,7 @@ def test_quantitate_tmin_default():
 
     with patch("spatial_tk.commands.quantitate.Path") as mock_path_cls, \
          patch("spatial_tk.commands.quantitate.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.quantitate.save_spatial_data"), \
-         patch("spatial_tk.commands.quantitate.set_table"), \
-         patch("spatial_tk.commands.quantitate.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.quantitate.save_command_output"), \
          patch("spatial_tk.commands.quantitate.get_output_path") as mock_out, \
          patch("spatial_tk.commands.quantitate.get_table") as mock_get_table, \
          patch("spatial_tk.commands.quantitate.annotation.load_marker_genes") as mock_load_markers, \
@@ -317,9 +303,7 @@ def test_quantitate_tmin_custom():
 
     with patch("spatial_tk.commands.quantitate.Path") as mock_path_cls, \
          patch("spatial_tk.commands.quantitate.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.quantitate.save_spatial_data"), \
-         patch("spatial_tk.commands.quantitate.set_table"), \
-         patch("spatial_tk.commands.quantitate.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.quantitate.save_command_output"), \
          patch("spatial_tk.commands.quantitate.get_output_path") as mock_out, \
          patch("spatial_tk.commands.quantitate.get_table") as mock_get_table, \
          patch("spatial_tk.commands.quantitate.annotation.load_marker_genes") as mock_load_markers, \
@@ -360,9 +344,7 @@ def test_quantitate_filter_obs_parsed_and_passed():
 
     with patch("spatial_tk.commands.quantitate.Path") as mock_path_cls, \
          patch("spatial_tk.commands.quantitate.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.quantitate.save_spatial_data"), \
-         patch("spatial_tk.commands.quantitate.set_table"), \
-         patch("spatial_tk.commands.quantitate.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.quantitate.save_command_output"), \
          patch("spatial_tk.commands.quantitate.get_output_path") as mock_out, \
          patch("spatial_tk.commands.quantitate.get_table") as mock_get_table, \
          patch("spatial_tk.commands.quantitate.annotation.filter_cells_by_obs") as mock_filter, \
@@ -409,9 +391,7 @@ def test_quantitate_preset_resources_calls_load_preset():
 
     with patch("spatial_tk.commands.quantitate.Path") as mock_path_cls, \
          patch("spatial_tk.commands.quantitate.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.quantitate.save_spatial_data"), \
-         patch("spatial_tk.commands.quantitate.set_table"), \
-         patch("spatial_tk.commands.quantitate.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.quantitate.save_command_output"), \
          patch("spatial_tk.commands.quantitate.get_output_path") as mock_out, \
          patch("spatial_tk.commands.quantitate.get_table") as mock_get_table, \
          patch("spatial_tk.commands.quantitate.annotation.load_preset_resource") as mock_load_preset, \
@@ -454,9 +434,7 @@ def test_quantitate_panglao_sensitivity_passed():
 
     with patch("spatial_tk.commands.quantitate.Path") as mock_path_cls, \
          patch("spatial_tk.commands.quantitate.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.quantitate.save_spatial_data"), \
-         patch("spatial_tk.commands.quantitate.set_table"), \
-         patch("spatial_tk.commands.quantitate.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.quantitate.save_command_output"), \
          patch("spatial_tk.commands.quantitate.get_output_path") as mock_out, \
          patch("spatial_tk.commands.quantitate.get_table") as mock_get_table, \
          patch("spatial_tk.commands.quantitate.annotation.load_preset_resource") as mock_load_preset, \
@@ -494,9 +472,7 @@ def test_quantitate_no_markers_no_preset_exits():
 
     with patch("spatial_tk.commands.quantitate.Path") as mock_path_cls, \
          patch("spatial_tk.commands.quantitate.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.quantitate.save_spatial_data"), \
-         patch("spatial_tk.commands.quantitate.set_table"), \
-         patch("spatial_tk.commands.quantitate.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.quantitate.save_command_output"), \
          patch("spatial_tk.commands.quantitate.get_output_path") as mock_out, \
          patch("spatial_tk.commands.quantitate.get_table") as mock_get_table:
 
