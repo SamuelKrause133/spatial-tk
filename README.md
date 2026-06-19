@@ -391,14 +391,14 @@ spatial-tk differential \
   --groupby status \
   --compare-groups HIV,NEG
 
-# With obsm enrichment scores
+# With obsm enrichment scores (pairwise t-test engine)
 spatial-tk differential \
   --input data.zarr \
   --output-dir results/ \
   --groupby status \
   --compare-groups HIV,NEG \
-  --obsm-layer score_mlm_PanglaoDB \
-  --save-plots
+  --on score_mlm_PanglaoDB \
+  --method ttest
 
 # Compare cell types
 spatial-tk differential \
@@ -414,7 +414,27 @@ spatial-tk differential \
   --groupby status \
   --compare-groups HIV,NEG \
   --within cell_type_res0p5
+
+# Stratified, restricted to specific strata
+spatial-tk differential \
+  --input data.zarr \
+  --output-dir results/ \
+  --groupby status \
+  --compare-groups HIV,NEG \
+  --within cell_type_res0p5 \
+  --within-subset "T cells,B cells"
+
+# Run on an obsm enrichment layer with the decoupler association engine
+spatial-tk differential \
+  --input data.zarr \
+  --output-dir results/ \
+  --groupby status \
+  --on score_mlm_PanglaoDB \
+  --method rankby
 ```
+
+The analysis runs on a single source per invocation (gene expression OR an
+obsm layer). Run it twice if you need both.
 
 **Arguments:**
 - `--input`: Input .zarr file with annotations
@@ -422,9 +442,11 @@ spatial-tk differential \
 - `--groupby`: Column in obs to group by (e.g., "leiden_res0p5", "status", "cell_type")
 - `--compare-groups`: Two groups to compare (Mode A), comma-separated
 - `--within`: Optional obs column to stratify by; runs the analysis separately within each category (e.g., "cell_type_res0p5")
-- `--obsm-layer`: Optional obsm layer for enrichment analysis (e.g., "score_mlm_PanglaoDB")
-- `--method`: Statistical test method (default: wilcoxon)
-- `--layer`: Layer to use for expression (default: None uses .X)
+- `--within-subset`: Comma-separated subset of `--within` categories to restrict to (requires `--within`)
+- `--on`: Data source — `gene_expression` (default), a layer name, or an obsm key (e.g., "score_mlm_PanglaoDB")
+- `--method`: Engine. Gene expression: `wilcoxon` (default), `t-test`, `logreg`. obsm: `ttest`, `means`, `rankby`
+- `--obsm-layer`: Deprecated alias for `--on`
+- `--layer`: Gene-expression layer to use (default: None uses .X)
 - `--n-genes`: Number of top genes to save (default: 100)
 - `--save-plots`: Generate differential analysis plots
 - `--config`: Path to TOML configuration file (optional)

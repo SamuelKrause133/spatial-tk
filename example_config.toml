@@ -174,9 +174,15 @@ groupby = "leiden_res0p5"
 # compare_groups = "HIV,NEG"
 # Optional obs column to stratify by; the analysis runs separately within each category
 # within = "cell_type_res0p5"
-# Optional obsm layer for enrichment-based differential analysis
+# Optional comma-separated subset of `within` categories to restrict to (requires `within`)
+# within_subset = "T cells,B cells"
+# Data source: "gene_expression" (default), a layer name, or an obsm key.
+# Runs on ONE source per invocation (run twice for both gene expression and obsm).
+# on = "score_mlm_PanglaoDB"
+# Deprecated alias for `on` pointing at an obsm key
 # obsm_layer = "score_mlm_PanglaoDB"
-# Statistical test method for gene expression DE
+# Statistical engine. Gene expression: wilcoxon (default), t-test, logreg.
+# obsm: ttest (pairwise), means (per-group means), rankby (decoupler ANOVA/Spearman).
 method = "wilcoxon"
 # Layer for gene expression DE; omit to use .X
 # layer = "counts"

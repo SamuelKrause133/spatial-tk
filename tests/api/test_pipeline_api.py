@@ -73,8 +73,8 @@ def test_full_pipeline_api_end_to_end(test_samples_csv, test_markers_csv):
     assert "cell_type_res0p5" in adata.obs.columns
 
     # 6. differential (mode B)
-    results = differential.run_differential_analysis(adata, groupby="leiden_res0p5")
-    assert results.gene_expression is not None
+    results = differential.run_differential(adata, groupby="leiden_res0p5")
+    assert results.results is not None and len(results.results) > 0
 
     # 7. spatial neighbors
     adata = spatial_neighbors.compute_spatial_neighbors(
@@ -108,10 +108,10 @@ def test_pipeline_api_group_comparison(assigned_adata):
     if assigned_adata.obs["status"].nunique() < 2:
         pytest.skip("Need at least two status groups for group comparison")
 
-    results = differential.run_differential_analysis(
+    results = differential.run_differential(
         assigned_adata.copy(), groupby="status", compare_groups=["HIV", "NEG"]
     )
-    assert results.gene_expression is not None
-    comparison_df = results.gene_expression
+    comparison_df = results.results
+    assert comparison_df is not None and len(comparison_df) > 0
     assert set(comparison_df["group1"].unique()) == {"HIV"}
     assert set(comparison_df["group2"].unique()) == {"NEG"}
