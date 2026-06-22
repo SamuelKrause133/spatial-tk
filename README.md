@@ -425,14 +425,14 @@ spatial-tk differential \
   --groupby status \
   --compare-groups HIV,NEG
 
-# With obsm enrichment scores
+# With obsm enrichment scores (pairwise t-test engine)
 spatial-tk differential \
   --input data.zarr \
   --output-dir results/ \
   --groupby status \
   --compare-groups HIV,NEG \
-  --obsm-layer score_mlm_PanglaoDB \
-  --save-plots
+  --on score_mlm_PanglaoDB \
+  --method ttest
 
 # Compare cell types
 spatial-tk differential \
@@ -440,16 +440,78 @@ spatial-tk differential \
   --output-dir results/ \
   --groupby cell_type_res0p5 \
   --n-genes 50
+
+# Stratified: compare status within each cell type
+spatial-tk differential \
+  --input data.zarr \
+  --output-dir results/ \
+  --groupby status \
+  --compare-groups HIV,NEG \
+  --within cell_type_res0p5
+
+# Stratified, restricted to specific strata
+spatial-tk differential \
+  --input data.zarr \
+  --output-dir results/ \
+  --groupby status \
+  --compare-groups HIV,NEG \
+  --within cell_type_res0p5 \
+  --within-subset "T cells,B cells"
+
+# Run on an obsm enrichment layer with internal rankby logic
+spatial-tk differential \
+  --input data.zarr \
+  --output-dir results/ \
+  --groupby status \
+  --on score_mlm_PanglaoDB \
+  --method rankby
+
+# Covariate-adjusted regression (statsmodels OLS): status effect controlling for sample
+spatial-tk differential \
+  --input data.zarr \
+  --output-dir results/ \
+  --groupby status \
+  --method regression \
+  --covariates sample,location
+
+# Regression with a direct formula and explicit coefficient selection
+spatial-tk differential \
+  --input data.zarr \
+  --output-dir results/ \
+  --groupby status \
+  --method regression \
+  --formula "C(status) + n_counts" \
+  --target-coef "C(status)[T.NEG]"
 ```
+
+The analysis runs on a single source per invocation (gene expression OR an
+obsm layer). Run it twice if you need both.
+
+The same generic statistical kernel (`ttest`, `wilcoxon`, `spearman`, `anova`,
+`regression`, `rankby`, `means`) applies to any source — `.X`, a layer, or an obsm key.
+Every inferential test reports a raw `pval` and a Benjamini-Hochberg corrected
+`padj` (corrected independently within each analysis scope, e.g. per stratum or
+per regression term). `means` is descriptive only (no p-values).
+
+For `regression`, pass either `--covariates` (an auto-built `feature ~
+C(groupby) + covariates` design) or a direct `--formula` (a Patsy right-hand
+side where the feature is the response). When `--formula` is used, `--target-coef`
+is required and may be a single term name, a comma-separated list, or `all`.
 
 **Arguments:**
 - `--input`: Input .zarr file with annotations
 - `--output-dir`: Directory for results
-- `--groupby`: Column in obs to group by (e.g., "leiden_res0p5", "status", "cell_type")
+- `--groupby`: Column in obs to group by (e.g., "leiden_res0p5", "status", "cell_type"); the continuous predictor for `spearman`/regression
 - `--compare-groups`: Two groups to compare (Mode A), comma-separated
-- `--obsm-layer`: Optional obsm layer for enrichment analysis (e.g., "score_mlm_PanglaoDB")
-- `--method`: Statistical test method (default: wilcoxon)
-- `--layer`: Layer to use for expression (default: None uses .X)
+- `--within`: Optional obs column to stratify by; runs the analysis separately within each category (e.g., "cell_type_res0p5")
+- `--within-subset`: Comma-separated subset of `--within` categories to restrict to (requires `--within`)
+- `--on`: Data source — `gene_expression` (default), a layer name, or an obsm key (e.g., "score_mlm_PanglaoDB")
+- `--method`: Statistical engine (any source): `wilcoxon` (default for GE), `ttest` (or `t-test`), `spearman`, `anova`, `regression`, `rankby`, `means`
+- `--covariates`: Comma-separated obs columns added to the `regression` design
+- `--formula`: Patsy right-hand-side formula for `regression` (e.g. `"C(status) + n_counts"`); requires `--target-coef`
+- `--target-coef`: Coefficient(s) to report for `regression`: a single term name, a comma-separated list, or `all`
+- `--obsm-layer`: Deprecated alias for `--on`
+- `--layer`: Gene-expression layer to use (default: None uses .X)
 - `--n-genes`: Number of top genes to save (default: 100)
 - `--save-plots`: Generate differential analysis plots
 - `--config`: Path to TOML configuration file (optional)

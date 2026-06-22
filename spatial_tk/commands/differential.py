@@ -47,14 +47,55 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         help='Comma-separated list of exactly 2 groups to compare (Mode A). E.g., "HIV,NEG". If not provided, finds markers for all groups (Mode B)'
     )
     parser.add_argument(
+        '--within',
+        help='Optional obs column whose categories stratify the analysis (e.g., "cell_type"). The differential analysis is run separately within each category.'
+    )
+    parser.add_argument(
+        '--within-subset',
+        help='Comma-separated subset of --within categories to restrict the analysis to (e.g., "T cells,B cells"). Requires --within.'
+    )
+    parser.add_argument(
+        '--on',
+        help='Data source: "gene_expression" (default), a layer name, or an obsm key (e.g., "score_mlm_PanglaoDB").'
+    )
+    parser.add_argument(
         '--obsm-layer',
-        help='Optional obsm layer to use for enrichment-based differential analysis (e.g., "score_mlm_PanglaoDB")'
+        help='Deprecated: alias for --on pointing at an obsm key.'
     )
     parser.add_argument(
         '--method',
-        default='wilcoxon',
-        choices=['wilcoxon', 't-test', 'logreg'],
-        help='Statistical test method for gene expression DE (default: wilcoxon)'
+        default=None,
+        choices=[
+            'wilcoxon', 't-test', 'ttest',
+            'means', 'rankby',
+            'spearman', 'anova', 'regression',
+        ],
+        help=(
+            'Statistical engine: wilcoxon, ttest (or t-test), '
+            'spearman, anova, regression, rankby, means.'
+        )
+    )
+    parser.add_argument(
+        '--covariates',
+        default=None,
+        help='Comma-separated obs columns added to the regression design (method=regression).'
+    )
+    parser.add_argument(
+        '--formula',
+        default=None,
+        help=(
+            'Patsy right-hand-side formula for method=regression (e.g. '
+            '"C(status) + n_counts"). Takes precedence over --groupby/--covariates; '
+            'requires --target-coef.'
+        )
+    )
+    parser.add_argument(
+        '--target-coef',
+        default=None,
+        help=(
+            'Coefficient(s) to report for method=regression: a single term name, '
+            'a comma-separated list, or "all". Required when --formula is given.'
+        )
     )
     parser.add_argument(
         '--layer',
@@ -128,6 +169,52 @@ def main(args: argparse.Namespace) -> None:
         if len(compare_groups) != 2:
             logging.error("--compare-groups must specify exactly 2 groups")
             sys.exit(1)
+
+    # Parse within_subset if provided
+    within_subset = None
+    if args.within_subset:
+        within_subset = [s.strip() for s in args.within_subset.split(',')]
+    if within_subset and not args.within:
+        logging.error("--within-subset requires --within")
+        sys.exit(1)
+
+    # Parse regression covariates / formula / target-coef
+    covariates = None
+    if args.covariates:
+        covariates = [c.strip() for c in args.covariates.split(',') if c.strip()]
+
+    formula = args.formula or None
+
+    target_coef = None
+    if args.target_coef:
+        if args.target_coef.strip() == "all":
+            target_coef = "all"
+        elif ',' in args.target_coef:
+            target_coef = [t.strip() for t in args.target_coef.split(',') if t.strip()]
+        else:
+            target_coef = args.target_coef.strip()
+
+    # Regression-only flags must accompany method=regression
+    if (covariates or formula) and args.method != 'regression':
+        logging.error("--covariates/--formula require --method regression")
+        sys.exit(1)
+    if formula and target_coef is None:
+        logging.error("--target-coef is required when --formula is provided")
+        sys.exit(1)
+
+    # Resolve the data source. Precedence: --on, then --obsm-layer (deprecated
+    # alias), then --layer (gene expression on a specific layer), else .X.
+    if args.on:
+        on = args.on
+        if args.obsm_layer:
+            logging.warning("--obsm-layer ignored because --on was provided")
+    elif args.obsm_layer:
+        logging.warning("--obsm-layer is deprecated; use --on instead")
+        on = args.obsm_layer
+    elif args.layer:
+        on = args.layer
+    else:
+        on = "gene_expression"
     
     try:
         import scanpy as sc
@@ -147,7 +234,36 @@ def main(args: argparse.Namespace) -> None:
             logging.error(f"Column '{args.groupby}' not found in obs")
             logging.info(f"Available columns: {', '.join(adata.obs.columns)}")
             sys.exit(1)
-        
+
+        # Validate within column if provided
+        if args.within and args.within not in adata.obs.columns:
+            logging.error(f"Column '{args.within}' not found in obs")
+            logging.info(f"Available columns: {', '.join(adata.obs.columns)}")
+            sys.exit(1)
+
+        # Validate the data source resolves to a layer or obsm key
+        is_obsm = on in adata.obsm
+        if not (on in ("gene_expression", "X") or on in adata.layers or is_obsm):
+            logging.error(
+                f"--on '{on}' is not 'gene_expression'/'X', a layer, or an obsm key"
+            )
+            logging.info(f"Available layers: {list(adata.layers)}")
+            logging.info(f"Available obsm keys: {list(adata.obsm.keys())}")
+            sys.exit(1)
+
+        # Validate method against the resolved source
+        if args.method:
+            generic_methods = {'ttest', 'wilcoxon', 'spearman', 'anova', 'regression', 'means', 'rankby'}
+            ge_methods = {'t-test'} | generic_methods
+            obsm_methods = {'t-test'} | generic_methods
+            allowed = obsm_methods if is_obsm else ge_methods
+            if args.method not in allowed:
+                logging.error(
+                    f"--method '{args.method}' is not valid for this source; "
+                    f"allowed: {sorted(allowed)}"
+                )
+                sys.exit(1)
+
         # Validate compare groups if provided
         if compare_groups:
             unique_groups = adata.obs[args.groupby].unique()
@@ -156,38 +272,32 @@ def main(args: argparse.Namespace) -> None:
                     logging.error(f"Group '{group}' not found in column '{args.groupby}'")
                     logging.info(f"Available groups: {', '.join(map(str, unique_groups))}")
                     sys.exit(1)
-        
-        # Run differential analysis via the core API
-        results = differential_core.run_differential_analysis(
+
+        # Run differential analysis via the unified core API
+        results = differential_core.run_differential(
             adata,
             args.groupby,
+            on=on,
             compare_groups=compare_groups,
+            within=args.within,
+            within_subset=within_subset,
             method=args.method,
-            layer=args.layer,
-            obsm_layer=args.obsm_layer,
+            covariates=covariates,
+            formula=formula,
+            target_coef=target_coef,
         )
 
-        # Save gene-expression DE results
-        if results.gene_expression is not None:
-            differential_core.save_gene_expression_de_results(
-                results.gene_expression,
-                output_dir,
-                args.groupby,
-                compare_groups,
-                args.n_genes,
-            )
+        # Save results
+        differential_core.save_differential_results(
+            results,
+            output_dir,
+            groupby=args.groupby,
+            compare_groups=compare_groups,
+            within=args.within,
+            n_top=args.n_genes,
+        )
 
-        # Save obsm DE results if requested
-        if results.obsm is not None:
-            differential_core.save_obsm_de_results(
-                results.obsm,
-                output_dir,
-                args.obsm_layer,
-                args.groupby,
-                compare_groups,
-            )
-
-        # adata holding the rank results (subset copy in Mode A, full adata in Mode B)
+        # adata holding the rank results (subset copy in Mode A, full adata otherwise)
         de_adata = results.adata
 
         # Generate plots if requested
