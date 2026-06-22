@@ -181,9 +181,17 @@ groupby = "leiden_res0p5"
 # on = "score_mlm_PanglaoDB"
 # Deprecated alias for `on` pointing at an obsm key
 # obsm_layer = "score_mlm_PanglaoDB"
-# Statistical engine. Gene expression: wilcoxon (default), t-test, logreg.
-# obsm: ttest (pairwise), means (per-group means), rankby (decoupler ANOVA/Spearman).
+# Statistical engine (any source): wilcoxon (default for GE), ttest (or t-test),
+#   spearman, anova, regression, rankby, means.
+# All inferential tests report raw `pval` and BH-corrected `padj`.
 method = "wilcoxon"
+# Regression-only options (method = "regression"):
+#   covariates: comma-separated obs columns added to the auto-built design
+#   formula:    Patsy right-hand side (feature is the response); needs target_coef
+#   target_coef: a single term name, comma-separated list, or "all" (required with formula)
+# covariates = "sample,location"
+# formula = "C(status) + n_counts"
+# target_coef = "C(status)[T.NEG]"
 # Layer for gene expression DE; omit to use .X
 # layer = "counts"
 # Generate and save differential analysis plots

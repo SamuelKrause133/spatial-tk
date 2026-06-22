@@ -35,8 +35,9 @@ def test_assign_auto_discovers_leiden_keys(assigned_adata):
 
 def test_assign_clusters_with_de(assigned_adata):
     adata = assigned_adata.copy()
-    adata, _ = differential.run_gene_expression_de(adata, "leiden_res0p5")
-    assert "rank_genes_leiden_res0p5" in adata.uns
+    _, de_df = differential.run_gene_expression_de(adata, "leiden_res0p5")
+    assert len(de_df) > 0
+    assert {"group", "feature", "padj"} <= set(de_df.columns)
 
 
 def test_assign_result_matches_cluster_count(assigned_adata):

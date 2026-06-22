@@ -65,8 +65,37 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         '--method',
         default=None,
-        choices=['wilcoxon', 't-test', 'logreg', 'ttest', 'means', 'rankby'],
-        help='Statistical engine. Gene expression: wilcoxon (default), t-test, logreg. obsm: ttest, means, rankby.'
+        choices=[
+            'wilcoxon', 't-test', 'ttest',
+            'means', 'rankby',
+            'spearman', 'anova', 'regression',
+        ],
+        help=(
+            'Statistical engine: wilcoxon, ttest (or t-test), '
+            'spearman, anova, regression, rankby, means.'
+        )
+    )
+    parser.add_argument(
+        '--covariates',
+        default=None,
+        help='Comma-separated obs columns added to the regression design (method=regression).'
+    )
+    parser.add_argument(
+        '--formula',
+        default=None,
+        help=(
+            'Patsy right-hand-side formula for method=regression (e.g. '
+            '"C(status) + n_counts"). Takes precedence over --groupby/--covariates; '
+            'requires --target-coef.'
+        )
+    )
+    parser.add_argument(
+        '--target-coef',
+        default=None,
+        help=(
+            'Coefficient(s) to report for method=regression: a single term name, '
+            'a comma-separated list, or "all". Required when --formula is given.'
+        )
     )
     parser.add_argument(
         '--layer',
@@ -149,6 +178,30 @@ def main(args: argparse.Namespace) -> None:
         logging.error("--within-subset requires --within")
         sys.exit(1)
 
+    # Parse regression covariates / formula / target-coef
+    covariates = None
+    if args.covariates:
+        covariates = [c.strip() for c in args.covariates.split(',') if c.strip()]
+
+    formula = args.formula or None
+
+    target_coef = None
+    if args.target_coef:
+        if args.target_coef.strip() == "all":
+            target_coef = "all"
+        elif ',' in args.target_coef:
+            target_coef = [t.strip() for t in args.target_coef.split(',') if t.strip()]
+        else:
+            target_coef = args.target_coef.strip()
+
+    # Regression-only flags must accompany method=regression
+    if (covariates or formula) and args.method != 'regression':
+        logging.error("--covariates/--formula require --method regression")
+        sys.exit(1)
+    if formula and target_coef is None:
+        logging.error("--target-coef is required when --formula is provided")
+        sys.exit(1)
+
     # Resolve the data source. Precedence: --on, then --obsm-layer (deprecated
     # alias), then --layer (gene expression on a specific layer), else .X.
     if args.on:
@@ -200,8 +253,9 @@ def main(args: argparse.Namespace) -> None:
 
         # Validate method against the resolved source
         if args.method:
-            ge_methods = {'wilcoxon', 't-test', 'logreg'}
-            obsm_methods = {'ttest', 'means', 'rankby'}
+            generic_methods = {'ttest', 'wilcoxon', 'spearman', 'anova', 'regression', 'means', 'rankby'}
+            ge_methods = {'t-test'} | generic_methods
+            obsm_methods = {'t-test'} | generic_methods
             allowed = obsm_methods if is_obsm else ge_methods
             if args.method not in allowed:
                 logging.error(
@@ -228,6 +282,9 @@ def main(args: argparse.Namespace) -> None:
             within=args.within,
             within_subset=within_subset,
             method=args.method,
+            covariates=covariates,
+            formula=formula,
+            target_coef=target_coef,
         )
 
         # Save results

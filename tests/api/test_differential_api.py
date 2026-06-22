@@ -20,8 +20,8 @@ pytestmark = pytest.mark.api
 def test_run_differential_ge_mode_b(assigned_adata):
     res = differential.run_differential(assigned_adata.copy(), groupby="leiden_res0p5")
     assert isinstance(res, DifferentialResults)
-    assert res.rank_key == "rank_genes_leiden_res0p5"
-    assert "names" in res.results.columns and len(res.results) > 0
+    assert {"feature", "group", "group1", "group2", "padj"} <= set(res.results.columns)
+    assert len(res.results) > 0
 
 
 def test_run_differential_ge_mode_a(assigned_adata):
@@ -36,7 +36,6 @@ def test_run_differential_ge_within(assigned_adata):
     res = differential.run_differential(
         assigned_adata.copy(), groupby="leiden_res0p5", within="status"
     )
-    assert res.rank_key is None
     if not res.results.empty:
         assert {"within_col", "within_value", "n_cells"} <= set(res.results.columns)
         assert set(res.results["within_col"].unique()) == {"status"}
@@ -79,6 +78,65 @@ def test_run_differential_obsm_rankby(assigned_adata):
     assert {"feature", "obs_col", "padj"} <= set(res.results.columns)
 
 
+def test_run_differential_obsm_anova(assigned_adata):
+    res = differential.run_differential(
+        assigned_adata.copy(),
+        groupby="status",
+        on="score_mlm_custom",
+        method="anova",
+    )
+    assert res.method == "anova"
+    assert {"feature", "predictor", "stat", "pval", "padj"} <= set(res.results.columns)
+
+
+# ---------------------------------------------------------------------------
+# Generic kernel across sources + regression
+# ---------------------------------------------------------------------------
+def test_run_differential_ge_anova(assigned_adata):
+    res = differential.run_differential(
+        assigned_adata.copy(), groupby="leiden_res0p5", method="anova"
+    )
+    assert res.method == "anova"
+    assert {"feature", "predictor", "padj"} <= set(res.results.columns)
+
+
+def test_run_differential_ge_regression_covariates(assigned_adata):
+    adata = assigned_adata.copy()
+    covs = [c for c in ("sample", "location") if c in adata.obs.columns]
+    res = differential.run_differential(
+        adata, groupby="status", method="regression", covariates=covs or None
+    )
+    assert res.method == "regression"
+    assert {"feature", "predictor", "coef", "pval", "padj"} <= set(res.results.columns)
+    # Default selection reports the predictor of interest (status).
+    assert res.results["predictor"].str.contains("status").all()
+
+
+def test_run_differential_obsm_regression_formula(assigned_adata):
+    adata = assigned_adata.copy()
+    res = differential.run_differential(
+        adata,
+        groupby="status",
+        on="score_mlm_custom",
+        method="regression",
+        formula="C(status)",
+        target_coef="all",
+    )
+    assert res.method == "regression"
+    assert {"feature", "predictor", "coef", "padj"} <= set(res.results.columns)
+
+
+def test_run_differential_formula_requires_target_coef(assigned_adata):
+    with pytest.raises(ValueError):
+        differential.run_differential(
+            assigned_adata.copy(),
+            groupby="status",
+            on="score_mlm_custom",
+            method="regression",
+            formula="C(status)",
+        )
+
+
 def test_run_obsm_de_missing_layer_returns_none(assigned_adata):
     assert (
         differential.run_obsm_de(
@@ -95,21 +153,3 @@ def test_invalid_on_raises(assigned_adata):
         )
 
 
-# ---------------------------------------------------------------------------
-# resume + rank key
-# ---------------------------------------------------------------------------
-def test_resume_skips_recompute(assigned_adata):
-    from unittest.mock import patch
-
-    adata = assigned_adata.copy()
-    differential.run_gene_expression_de(adata, groupby="leiden_res0p5")
-    with patch("scanpy.tl.rank_genes_groups") as mock_rank:
-        differential.run_gene_expression_de(
-            adata, groupby="leiden_res0p5", resume=True
-        )
-    assert not mock_rank.called
-
-
-def test_rank_key_stored_correctly(assigned_adata):
-    res = differential.run_differential(assigned_adata.copy(), groupby="leiden_res0p5")
-    assert res.adata.uns["rank_genes_groups_key"] == "rank_genes_leiden_res0p5"
