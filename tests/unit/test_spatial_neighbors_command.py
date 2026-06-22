@@ -43,9 +43,7 @@ def test_spatial_neighbors_passes_arguments_to_core():
 
     with patch("spatial_tk.commands.spatial_neighbors.Path") as mock_path_cls, \
          patch("spatial_tk.commands.spatial_neighbors.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.spatial_neighbors.save_spatial_data"), \
-         patch("spatial_tk.commands.spatial_neighbors.set_table"), \
-         patch("spatial_tk.commands.spatial_neighbors.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.spatial_neighbors.save_command_output"), \
          patch("spatial_tk.commands.spatial_neighbors.get_output_path") as mock_out, \
          patch("spatial_tk.commands.spatial_neighbors.get_table") as mock_get_table, \
          patch("spatial_tk.commands.spatial_neighbors.spatial_neighbors_core.compute_spatial_neighbors") as mock_compute:
@@ -80,9 +78,7 @@ def test_spatial_neighbors_library_id_creates_temp_library_column():
 
     with patch("spatial_tk.commands.spatial_neighbors.Path") as mock_path_cls, \
          patch("spatial_tk.commands.spatial_neighbors.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.spatial_neighbors.save_spatial_data"), \
-         patch("spatial_tk.commands.spatial_neighbors.set_table"), \
-         patch("spatial_tk.commands.spatial_neighbors.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.spatial_neighbors.save_command_output"), \
          patch("spatial_tk.commands.spatial_neighbors.get_output_path") as mock_out, \
          patch("spatial_tk.commands.spatial_neighbors.get_table") as mock_get_table, \
          patch("spatial_tk.commands.spatial_neighbors.spatial_neighbors_core.compute_spatial_neighbors") as mock_compute:
@@ -136,9 +132,7 @@ def test_spatial_neighbors_table_key_forwarded():
 
     with patch("spatial_tk.commands.spatial_neighbors.Path") as mock_path_cls, \
          patch("spatial_tk.commands.spatial_neighbors.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.spatial_neighbors.save_spatial_data"), \
-         patch("spatial_tk.commands.spatial_neighbors.set_table") as mock_set_table, \
-         patch("spatial_tk.commands.spatial_neighbors.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.spatial_neighbors.save_command_output") as mock_save_output, \
          patch("spatial_tk.commands.spatial_neighbors.get_output_path") as mock_out, \
          patch("spatial_tk.commands.spatial_neighbors.get_table") as mock_get_table, \
          patch("spatial_tk.commands.spatial_neighbors.spatial_neighbors_core.compute_spatial_neighbors"):
@@ -156,7 +150,13 @@ def test_spatial_neighbors_table_key_forwarded():
         spatial_neighbors.main(args)
 
         mock_get_table.assert_called_once_with(mock_sdata, table_key="rna_table")
-        mock_set_table.assert_called_once_with(mock_sdata, mock_adata, table_key="rna_table")
+        mock_save_output.assert_called_once_with(
+            mock_adata,
+            mock_path_obj,
+            mock_path_obj,
+            inplace=False,
+            table_key="rna_table",
+        )
 
 
 def test_spatial_neighbors_config_merge_applies_values():
@@ -177,9 +177,7 @@ def test_spatial_neighbors_config_merge_applies_values():
     with patch("spatial_tk.commands.spatial_neighbors.load_config", return_value=config_dict), \
          patch("spatial_tk.commands.spatial_neighbors.Path") as mock_path_cls, \
          patch("spatial_tk.commands.spatial_neighbors.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.spatial_neighbors.save_spatial_data"), \
-         patch("spatial_tk.commands.spatial_neighbors.set_table"), \
-         patch("spatial_tk.commands.spatial_neighbors.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.spatial_neighbors.save_command_output"), \
          patch("spatial_tk.commands.spatial_neighbors.get_output_path") as mock_out, \
          patch("spatial_tk.commands.spatial_neighbors.get_table") as mock_get_table, \
          patch("spatial_tk.commands.spatial_neighbors.spatial_neighbors_core.compute_spatial_neighbors") as mock_compute:

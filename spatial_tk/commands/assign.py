@@ -10,24 +10,17 @@ optionally runs per-cluster differential expression.
 import argparse
 import logging
 import sys
-import pathlib
 from pathlib import Path
 
 from spatial_tk.core.cli_constants import ASSIGNMENT_STRATEGY_CHOICES
-from spatial_tk.core.data_io import (
-    copy_spatial_store,
-    load_existing_spatial_data,
-    load_table_only,
-    save_spatial_data,
-    save_table_only,
-)
+from spatial_tk.core.data_io import load_existing_spatial_data
 from spatial_tk.core import annotation
+from spatial_tk.core import differential
 from spatial_tk.core import plotting
 from spatial_tk.utils.helpers import (
     get_output_path,
     get_table,
-    prepare_spatial_data_for_save,
-    set_table,
+    save_command_output,
 )
 from spatial_tk.utils.config import load_config, merge_config_with_args
 
@@ -193,24 +186,12 @@ def main(args: argparse.Namespace) -> None:
         # ------------------------------------------------------------------ #
         if args.run_de:
             for cluster_key in cluster_keys:
-                adata = annotation.run_differential_expression(adata, cluster_key)
+                adata, _ = differential.run_gene_expression_de(adata, cluster_key)
 
         # ------------------------------------------------------------------ #
         # Save
         # ------------------------------------------------------------------ #
-        prepare_spatial_data_for_save(adata)
-        if not isinstance(output_path, pathlib.Path):
-            # Unit tests patch output paths with MagicMock; keep legacy write path.
-            set_table(sdata, adata)
-            save_spatial_data(sdata, output_path, overwrite=args.inplace)
-            logging.info(f"Saved results to: {output_path}")
-            return
-        if args.inplace:
-            save_table_only(adata, output_path, overwrite=True)
-        else:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            copy_spatial_store(input_path, output_path, overwrite=False)
-            save_table_only(adata, output_path, overwrite=True)
+        save_command_output(adata, input_path, output_path, inplace=args.inplace)
         logging.info(f"Saved results to: {output_path}")
 
         # ------------------------------------------------------------------ #

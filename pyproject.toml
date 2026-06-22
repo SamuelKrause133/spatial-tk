@@ -103,6 +103,7 @@ markers = [
     "slow: tests that run on full external datasets",
     "functional_fast: functional tests intended for ROI fixtures",
     "functional_full: functional tests intended for full external fixtures",
+    "api: tests that exercise the core Python API (programmatic pipelines)",
 ]
 # Use custom temp directory to avoid filling up /tmp
 # This directory should be on a partition with more space

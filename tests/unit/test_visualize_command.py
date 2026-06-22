@@ -119,7 +119,7 @@ def test_visualize_uses_explicit_image_source(tmp_path):
          patch("spatial_tk.commands.visualize.compile_style_arrays") as mock_compile, \
          patch("spatial_tk.commands.visualize.resolve_rois") as mock_rois, \
          patch("spatial_tk.commands.visualize._resolve_output") as mock_out, \
-         patch("spatial_tk.commands.visualize.extract_image_overlay") as mock_extract, \
+         patch("spatial_tk.core.visualization.extract_image_overlay") as mock_extract, \
          patch("spatial_tk.commands.visualize.render_roi_plot"):
         mock_load.return_value = mock_sdata
         mock_load_image_source.return_value = mock_image_sdata

@@ -6,23 +6,15 @@ spatial_cluster command: Cluster neighborhood composition profiles.
 import argparse
 import logging
 import sys
-import pathlib
 from pathlib import Path
 
-from spatial_tk.core.data_io import (
-    copy_spatial_store,
-    load_existing_spatial_data,
-    load_table_only,
-    save_spatial_data,
-    save_table_only,
-)
+from spatial_tk.core.data_io import load_existing_spatial_data
 from spatial_tk.core import spatial_clustering
 from spatial_tk.core import spatial_neighbors as spatial_neighbors_core
 from spatial_tk.utils.helpers import (
     get_output_path,
     get_table,
-    prepare_spatial_data_for_save,
-    set_table,
+    save_command_output,
 )
 from spatial_tk.utils.config import load_config, merge_config_with_args
 
@@ -208,98 +200,37 @@ def main(args: argparse.Namespace) -> None:
                 raise ValueError(f"No table found for --table-key={args.table_key}")
             raise ValueError("No expression table found in spatial data")
 
-        if args.connectivities_key not in adata.obsp:
-            if args.neighbor_k is None:
-                raise ValueError(
-                    f"Missing adata.obsp['{args.connectivities_key}']; provide --neighbor-k to compute neighbors."
-                )
-            if args.neighbor_k <= 0:
-                raise ValueError("--neighbor-k must be > 0 when provided")
-
-            if args.connectivities_key.endswith("_connectivities"):
-                neighbor_key_added = args.connectivities_key[: -len("_connectivities")]
-            else:
-                neighbor_key_added = args.connectivities_key
-
-            spatial_neighbors_core.compute_spatial_neighbors(
-                adata=adata,
-                spatial_key=args.spatial_key,
-                library_key=args.library_key,
-                coord_type="generic",
-                n_neighs=args.neighbor_k,
-                radius=None,
-                transform=None,
-                key_added=neighbor_key_added,
-            )
-
-        composition_result = spatial_clustering.build_neighborhood_composition(
-            adata=adata,
-            connectivities_key=args.connectivities_key,
+        adata = spatial_clustering.run_spatial_cluster(
+            adata,
             cell_type_key=args.cell_type_key,
-            include_self=args.include_self,
-            normalize=args.normalize_composition,
-        )
-        composition = composition_result["composition"]
-        categories = composition_result["cell_type_categories"]
-
-        if args.mode == "kmeans":
-            cluster_result = spatial_clustering.run_spatial_kmeans(
-                composition=composition,
-                min_clusters=args.min_clusters,
-                max_clusters=args.max_clusters,
-                random_state=args.random_state,
-                force_n_clusters=args.force_n_clusters,
-            )
-        else:
-            cluster_result = spatial_clustering.run_spatial_hdbscan(
-                composition=composition,
-                min_cluster_size=args.hdbscan_min_cluster_size,
-                min_samples=args.hdbscan_min_samples,
-                cluster_selection_epsilon=args.hdbscan_cluster_selection_epsilon,
-                metric=args.hdbscan_metric,
-                allow_single_cluster=args.hdbscan_allow_single_cluster,
-            )
-
-        params = {
-            "mode": args.mode,
-            "connectivities_key": args.connectivities_key,
-            "cell_type_key": args.cell_type_key,
-            "include_self": args.include_self,
-            "normalize_composition": args.normalize_composition,
-            "random_state": args.random_state,
-            "min_clusters": args.min_clusters,
-            "max_clusters": args.max_clusters,
-            "force_n_clusters": args.force_n_clusters,
-            "hdbscan_min_cluster_size": args.hdbscan_min_cluster_size,
-            "hdbscan_min_samples": args.hdbscan_min_samples,
-            "hdbscan_cluster_selection_epsilon": args.hdbscan_cluster_selection_epsilon,
-            "hdbscan_metric": args.hdbscan_metric,
-            "hdbscan_allow_single_cluster": args.hdbscan_allow_single_cluster,
-        }
-        adata = spatial_clustering.store_spatial_cluster_results(
-            adata=adata,
+            connectivities_key=args.connectivities_key,
+            mode=args.mode,
             output_key=args.output_key,
             results_key=args.results_key,
-            params=params,
-            composition=composition,
-            categories=categories,
-            cluster_results=cluster_result,
+            include_self=args.include_self,
+            normalize_composition=args.normalize_composition,
             store_composition_in_obsm=True,
+            neighbor_k=args.neighbor_k,
+            spatial_key=args.spatial_key,
+            library_key=args.library_key,
+            min_clusters=args.min_clusters,
+            max_clusters=args.max_clusters,
+            random_state=args.random_state,
+            force_n_clusters=args.force_n_clusters,
+            hdbscan_min_cluster_size=args.hdbscan_min_cluster_size,
+            hdbscan_min_samples=args.hdbscan_min_samples,
+            hdbscan_cluster_selection_epsilon=args.hdbscan_cluster_selection_epsilon,
+            hdbscan_metric=args.hdbscan_metric,
+            hdbscan_allow_single_cluster=args.hdbscan_allow_single_cluster,
         )
 
-        prepare_spatial_data_for_save(adata)
-        if not isinstance(output_path, pathlib.Path):
-            # Unit tests patch output paths with MagicMock; keep legacy write path.
-            set_table(sdata, adata, table_key=args.table_key)
-            save_spatial_data(sdata, output_path, overwrite=args.inplace)
-            logging.info("Spatial cluster complete: %s", output_path)
-            return
-        if args.inplace:
-            save_table_only(adata, output_path, overwrite=True, table_key=args.table_key)
-        else:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            copy_spatial_store(input_path, output_path, overwrite=False)
-            save_table_only(adata, output_path, overwrite=True, table_key=args.table_key)
+        save_command_output(
+            adata,
+            input_path,
+            output_path,
+            inplace=args.inplace,
+            table_key=args.table_key,
+        )
         logging.info("Spatial cluster complete: %s", output_path)
     except Exception as exc:
         logging.error(f"Spatial cluster failed: {exc}", exc_info=True)

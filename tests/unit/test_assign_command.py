@@ -47,13 +47,11 @@ def _run_assign(args):
 
     with patch("spatial_tk.commands.assign.Path") as mock_path_cls, \
          patch("spatial_tk.commands.assign.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.assign.save_spatial_data"), \
-         patch("spatial_tk.commands.assign.set_table"), \
-         patch("spatial_tk.commands.assign.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.assign.save_command_output"), \
          patch("spatial_tk.commands.assign.get_output_path") as mock_out, \
          patch("spatial_tk.commands.assign.get_table") as mock_get_table, \
          patch("spatial_tk.commands.assign.annotation.assign_clusters") as mock_assign_clusters, \
-         patch("spatial_tk.commands.assign.annotation.run_differential_expression") as mock_de:
+         patch("spatial_tk.commands.assign.differential.run_gene_expression_de") as mock_de:
 
         mock_path_obj = MagicMock()
         mock_path_obj.exists.return_value = True
@@ -63,7 +61,7 @@ def _run_assign(args):
         mock_load.return_value = mock_sdata
         mock_get_table.return_value = mock_adata
         mock_assign_clusters.return_value = mock_adata
-        mock_de.return_value = mock_adata
+        mock_de.return_value = (mock_adata, None)
 
         try:
             assign.main(args)
@@ -137,7 +135,7 @@ def test_assign_custom_annotation_key():
 
 
 def test_assign_de_runs_by_default():
-    """run_differential_expression is called for each cluster key by default."""
+    """run_gene_expression_de is called for each cluster key by default."""
     args = _make_args()  # run_de=True, auto-discover two cluster keys
     _, _, mock_de = _run_assign(args)
 
@@ -145,7 +143,7 @@ def test_assign_de_runs_by_default():
 
 
 def test_assign_de_skipped_when_disabled():
-    """--run-de false → run_differential_expression is never called."""
+    """--run-de false → run_gene_expression_de is never called."""
     args = _make_args(run_de=False)
     _, _, mock_de = _run_assign(args)
 
@@ -165,9 +163,7 @@ def test_assign_missing_score_key_exits():
 
     with patch("spatial_tk.commands.assign.Path") as mock_path_cls, \
          patch("spatial_tk.commands.assign.load_existing_spatial_data") as mock_load, \
-         patch("spatial_tk.commands.assign.save_spatial_data"), \
-         patch("spatial_tk.commands.assign.set_table"), \
-         patch("spatial_tk.commands.assign.prepare_spatial_data_for_save"), \
+         patch("spatial_tk.commands.assign.save_command_output"), \
          patch("spatial_tk.commands.assign.get_output_path") as mock_out, \
          patch("spatial_tk.commands.assign.get_table") as mock_get_table:
 

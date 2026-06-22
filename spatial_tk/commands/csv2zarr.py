@@ -157,7 +157,7 @@ def _build_spatialdata(
 ) -> Any:
     import geopandas as gpd
     import spatialdata as sd
-    from spatialdata.models import Image2DModel, Labels2DModel, ShapesModel
+    from spatialdata.models import Image2DModel, Labels2DModel, ShapesModel, TableModel
     from spatialdata.transformations import Identity
 
     tr = {coord_system: Identity()}
@@ -190,6 +190,23 @@ def _build_spatialdata(
     }
     gdf = gpd.read_file(geojson_path)
     shapes = {shapes_key: ShapesModel.parse(gdf, transformations=tr)}
+    # Parse the table as a SpatialData TableModel so it carries valid
+    # region/region_key/instance_key metadata (and is saveable without repair).
+    # TableModel requires instance_key to be int/string (not categorical), while
+    # prepare_spatial_data_for_save coerces it to categorical, so undo that here.
+    import pandas as pd
+
+    if isinstance(adata.obs["instance_id"].dtype, pd.CategoricalDtype):
+        adata.obs["instance_id"] = adata.obs["instance_id"].astype(
+            adata.obs["instance_id"].cat.categories.dtype
+        )
+    table_regions = sorted(str(r) for r in adata.obs["region"].unique())
+    adata = TableModel.parse(
+        adata,
+        region=table_regions,
+        region_key="region",
+        instance_key="instance_id",
+    )
     return sd.SpatialData(images=images, labels=label_elements, shapes=shapes, tables={table_key: adata})
 
 
